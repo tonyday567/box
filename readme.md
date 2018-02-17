@@ -7,5 +7,7 @@ compilation recipe
 ---
 
 ```
-stack build --test --file-watch
+stack build --test --fast --haddock --file-watch
+stack hoogle -- generate --local
+stack hoogle -- server --local --port=8080
 ```

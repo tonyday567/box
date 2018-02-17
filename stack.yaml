@@ -4,5 +4,9 @@ packages:
 - .
 
 extra-deps:
-  - streaming-0.1.4.5
+  - streaming-0.2.0.0
+  - git: https://github.com/tonyday567/generic-lens-labels.git
+    commit: 268482be078e543c1f8fef33ae8ceabc7a201f8b
   - mmorph-1.0.9
+  - http-conduit-2.3.0
+# allow-newer: true

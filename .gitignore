@@ -3,3 +3,5 @@ TAGS
 /.DS_Store
 /etc.cabal
 /src/.DS_Store
+/src/Etc/.DS_Store
+/.projectile

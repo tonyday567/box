@@ -16,21 +16,40 @@ dependencies:
 library:
   source-dirs: src
   ghc-options:
-  - -funbox-strict-fields
-  - -fforce-recomp
+    - -Wall
+    - -Wcompat
+    - -Wincomplete-record-updates
+    - -Wincomplete-uni-patterns
+    - -Wredundant-constraints
+    - -funbox-strict-fields
   exposed-modules:
   - Etc
+  - Etc.Action
+  - Etc.Broadcast
+  - Etc.Time
+  - Etc.Updater
   dependencies:
+  - async
+  - attoparsec
+  - bytestring
   - contravariant
+  - data-default
   - flow
   - foldl
+  - generic-lens-labels
+  - lens
   - managed
+  - mmorph
+  - pipes
   - pipes-concurrency
   - profunctors
   - protolude
-  - streaming
+  - stm
+  - streaming 
   - text
+  - time
   - transformers
+  - transformers-base
 tests:
   test:
     main: test.hs
@@ -38,3 +57,9 @@ tests:
     dependencies:
     - doctest
     - protolude
+    ghc-options:
+      - -Wall
+      - -Wcompat
+      - -Wincomplete-record-updates
+      - -Wincomplete-uni-patterns
+      - -Wredundant-constraints
