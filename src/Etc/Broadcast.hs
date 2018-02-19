@@ -1,46 +1,49 @@
 {-# LANGUAGE NoImplicitPrelude #-}
+{-# OPTIONS_GHC -Wall #-}
 
-module Etc.Broadcast where
+module Etc.Broadcast
+  ( Broadcaster(..)
+  , broadcast
+  , subscribe
+  , Funneler(..)
+  , funnel
+  , widen
+  ) where
 
 import Control.Concurrent.STM
 import Etc
-import qualified Pipes.Concurrent as P
 import Protolude
+import Control.Monad.Managed
 
 newtype Broadcaster a = Broadcaster
-  { unBroadcast :: TVar (P.Output a)
+  { unBroadcast :: TVar (Committer a)
   }
 
-broadcast :: STM (Committer a, Broadcaster a)
+broadcast :: IO (Committer a, Broadcaster a)
 broadcast = do
-  tvar <- newTVar mempty
-  let output =
-        P.Output $ \a -> do
-          o <- readTVar tvar
-          P.send o a
+  tvar <- atomically $ newTVar mempty
+  let output a = do
+          o <- atomically $ readTVar tvar
+          commit o a
   return (Committer output, Broadcaster tvar)
 
-subscribe :: P.Buffer a -> Broadcaster a -> IO (Emitter a)
-subscribe buffer (Broadcaster tvar) = do
-  (output, input) <- P.spawn buffer
-  atomically $ modifyTVar' tvar (mappend output)
-  return (Emitter input)
+subscribe :: Buffer a -> Broadcaster a -> Managed (Emitter a)
+subscribe b (Broadcaster tvar) = managed $ \e -> withBufferC b cio e where
+  cio c = atomically $ modifyTVar' tvar (mappend c)
 
 newtype Funneler a = Funneler
-  { unFunnnel :: TVar (P.Input a)
+  { unFunnel :: TVar (Emitter a)
   }
 
 funnel :: STM (Funneler a, Emitter a)
 funnel = do
   tvar <- newTVar mempty
   let input =
-        P.Input $ do
-          i <- readTVar tvar
-          P.recv i
-  return (Funneler tvar, Emitter input)
+        Emitter $ do
+          i <- atomically $ readTVar tvar
+          emit i
+  return (Funneler tvar, input)
 
-widen :: P.Buffer a -> Funneler a -> IO (Committer a)
-widen buffer (Funneler tvar) = do
-  (output, input) <- P.spawn buffer
-  atomically $ modifyTVar' tvar (mappend input)
-  return (Committer output)
+widen :: Buffer a -> Funneler a -> Managed (Committer a)
+widen b (Funneler tvar) = managed $ \c -> withBufferE b c $ \e ->
+  atomically $ modifyTVar' tvar (mappend e)

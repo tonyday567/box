@@ -4,7 +4,12 @@
 
 -- | based on https://github.com/Gabriel439/Haskell-MVC-Updates-Library
 
-module Etc.Updater where
+module Etc.Updater
+  ( Updater(..)
+  , updater
+  , listen
+  , updates
+  ) where
 
 import Control.Applicative (Applicative(pure, (<*>)))
 import Control.Foldl (FoldM(..), Fold(..))
@@ -13,7 +18,6 @@ import Etc
 import Protolude
 import qualified Control.Foldl as Foldl
 import Control.Monad.Managed
-import qualified Pipes.Concurrent as P
 
 -- | An updater of a value a, where the updating process consists of an IO fold over an emitter
 data Updater a = forall e . Updater (FoldM IO e a) (Managed (Emitter e))
@@ -77,9 +81,9 @@ listen handler (Updater (FoldM step begin done) mController) =
         handler b
         return x'
 
-updates :: P.Buffer a -> Updater a -> Managed (Emitter a)
+updates :: Buffer a -> Updater a -> Managed (Emitter a)
 updates buffer (Updater (FoldM step begin done) e) = managed $ \e' ->
-    fmap snd $ P.withBuffer buffer (cio . Committer) (e' . Emitter)
+    withBufferC buffer cio e'
   where
     ioref c = do
       x <- begin
@@ -91,8 +95,11 @@ updates buffer (Updater (FoldM step begin done) e) = managed $ \e' ->
       ioref' <- ioref c
       x  <- readIORef ioref'
       e'' <- emit e'
-      x' <- step x e''
-      a  <- done x'
-      _  <- commit c a
-      writeIORef ioref' x'
+      case e'' of
+        Nothing -> pure ()
+        Just e''' -> do
+          x' <- step x e'''
+          a  <- done x'
+          _  <- commit c a
+          writeIORef ioref' x'
 

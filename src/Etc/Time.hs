@@ -8,7 +8,14 @@
 {-# OPTIONS_GHC -fno-warn-type-defaults #-}
 
 -- | timing effects
-module Etc.Time where
+module Etc.Time
+  ( sleep
+  , keepOpen
+  , delayTimed
+  , Stamped(..)
+  , stampNow
+  , emitStamp
+  ) where
 
 import Control.Applicative
 import Control.Concurrent (threadDelay)
@@ -20,7 +27,6 @@ import Protolude
 import Control.Monad.Managed
 import qualified Streaming.Prelude as S
 import System.IO.Unsafe
-import Pipes.Concurrent
 
 -- | sleep for x seconds
 sleep :: Double -> IO ()

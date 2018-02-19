@@ -5,7 +5,18 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# OPTIONS_GHC -Wall #-}
 
-module Etc.Action where
+module Etc.Action
+  ( ActionComm(..)
+  , ControlComm(..)
+  , ActionBox
+  , ActionConfig(..)
+  , consoleActionBox
+  , parseActionComms
+  , controlBox
+  , runControlBox
+  , testBox
+  , timeOut
+  ) where
 
 import Control.Applicative
 import Control.Category
@@ -19,8 +30,7 @@ import Data.IORef
 import Data.Semigroup
 import Etc
 import Flow
-import GHC.Generics
-import Pipes.Concurrent as P
+import GHC.Generics 
 import Protolude hiding ((.))
 import qualified Data.Text as Text
 import qualified Streaming.Prelude as S
@@ -82,7 +92,7 @@ controlBox ::
   ActionConfig ->
   IO () ->
   Box ActionComm ActionComm ->
-  IO ()
+  IO Bool
 controlBox cfg app (Box c e) = do
   ref' <- newIORef Nothing
   go ref'
@@ -90,30 +100,33 @@ controlBox cfg app (Box c e) = do
     go ref = do
       msg <- emit e
       case msg of
-        ActionCheck -> do
-          a <- readIORef ref
-          commit c $ ActionOn (bool True False (isNothing a))
-          go ref
-        ActionStart -> do
-          a <- readIORef ref
-          when (isNothing a) (start ref c)
-          go ref
-        ActionStop ->
-          cancel' ref >> go ref
-        ActionKill -> cancel' ref >> commit c ActionShutDown
-        ActionDied ->
-          case cfg of
-            AllowDeath -> commit c ActionShutDown
-            KeepAlive x -> do
-              sleep x
-              commit c ActionStart
+        Nothing -> go ref
+        Just msg' ->
+          case msg' of
+            ActionCheck -> do
+              a <- readIORef ref
+              _ <- commit c $ ActionOn (bool True False (isNothing a))
               go ref
-        ActionReset -> do
-          a <- readIORef ref
-          when (not $ isNothing a) (cancel' ref)
-          start ref c
-          go ref
-        _ -> go ref
+            ActionStart -> do
+              a <- readIORef ref
+              when (isNothing a) (void $ start ref c)
+              go ref
+            ActionStop ->
+              cancel' ref >> go ref
+            ActionKill -> cancel' ref >> commit c ActionShutDown
+            ActionDied ->
+              case cfg of
+                AllowDeath -> commit c ActionShutDown
+                KeepAlive x -> do
+                  sleep x
+                  _ <- commit c ActionStart
+                  go ref
+            ActionReset -> do
+              a <- readIORef ref
+              when (not $ isNothing a) (cancel' ref)
+              _ <- start ref c
+              go ref
+            _ -> go ref
     start ref c' = do
       a' <- async (app >> commit c' ActionDied)
       writeIORef ref (Just a')
@@ -126,10 +139,10 @@ runControlBox :: ActionConfig -> IO () -> IO ()
 runControlBox cfg action =
   etc ()
   (Transducer $ \s -> s & S.takeWhile (/= ActionShutDown))
-  (toBoxForget (bounded 1) (bounded 1) $ controlBox cfg action)
+  (toBoxForget (bounded 1) (bounded 1) (void <$> controlBox cfg action))
 
 -- | send Start, wait for a Ready signal, run action, wait x secs, then send Quit
-testBox :: IO ()
+testBox :: IO Bool
 testBox = cb where
   action = sequence_ $
     (\x -> putStrLn x >> sleep 1) .
