@@ -35,6 +35,7 @@ import qualified Data.Attoparsec.Text as A
 import Text.Read (reads)
 import qualified Pipes
 import qualified Pipes.Prelude as Pipes
+import Control.Monad.Morph (generalize)
 
 -- $setup
 -- >>> :set -XOverloadedStrings
@@ -43,6 +44,8 @@ import qualified Pipes.Prelude as Pipes
 --
 
 -- | an Emitter emits values of type a. A Source of 'a's & a Producer of 'a's are the two obvious alternative but overloaded metaphors out there. It is a newtype warpper around pipes-concurrency Input to pick up the instances.
+--
+-- Naming is reversed in comparison to the 'Input' it wraps.  An Emitter 'reaches into itself' for the value to emit, where itself is an opaque thing from the pov of usage.  An Emitter is named for its' main action: it emits.
 newtype Emitter a =
   Emitter (Input a)
   deriving (Functor, Applicative, Monad, Alternative, MonadPlus, Monoid)
@@ -54,7 +57,8 @@ emit' :: Emitter a -> IO (Maybe a)
 emit' (Emitter i) = atomically $ recv i
 
 -- | emit from an emitter
--- >  with b $ \b' -> (b' |> emitter |> emit) >>= putStrLn
+--
+-- >>>  with b $ \b' -> (b' |> emitter |> emit) >>= putStrLn
 -- hi
 --
 emit :: Emitter a -> IO a
@@ -65,6 +69,9 @@ emit (Emitter i) = do
     Just a' -> pure a'
 
 -- | a Committer commits values of type a (to the effects void presumably). A Sink for 'a's & a Consumer of 'a's are the other metaphors. It is a newtype wrapper around pipes-concurrency Output to pick up the instances.
+--
+-- Naming is reversed in comparison to the 'Output' it wraps.  An Committer 'reaches out and absorbs' the value being committed; the value disappears into the opaque thing that is a Committer from the pov of usage.  An Committer is named for its' main action: it commits.
+--
 newtype Committer a =
   Committer (Output a)
   deriving (Monoid, Contravariant, Divisible, Decidable)
@@ -72,7 +79,8 @@ newtype Committer a =
 instance Semigroup (Committer a)
 
 -- | commit to a committer
--- > with b $ \b' -> commit (committer b') "something"
+--
+-- >>> with b $ \b' -> commit (committer b') "something"
 -- something
 --
 commit :: Committer a -> a -> IO ()
@@ -109,11 +117,10 @@ instance Monoid (Box c e) where
 -- | transduction
 -- [wiki](https://en.wikipedia.org/wiki/Transducer) says: "A transducer is a device that converts energy from one form to another." Translated to context, this Transducer converts a stream of type a to a stream of a different type.
 --
--- >>> let t = Transducer $ \s -> s & S.takeWhile (/="q") & S.map ("echo: " <>)
 -- >>> :t t
 -- t :: (Eq b, IsString b, Semigroup b) => Transducer s b b
 --
-newtype Transducer s a b = Transducer (forall m . Monad m => Stream (Of a) (StateT s m) () -> Stream (Of b) (StateT s m) ())
+newtype Transducer s a b = Transducer (forall m. Monad m => Stream (Of a) (StateT s m) () -> Stream (Of b) (StateT s m) ())
 
 instance Category (Transducer s) where
     (Transducer t1) . (Transducer t2) = Transducer (t1 . t2)
@@ -126,6 +133,7 @@ newtype TransducerM m s a b = TransducerM (Stream (Of a) (StateT s m) () -> Stre
 newtype TransducerM' m a b = Transducer' (Stream (Of a) m () -> Stream (Of b) m ())
 
 -- | emit - transduce - commit
+--
 -- >>> etc () t b
 -- echo: hi
 -- echo: bye
@@ -148,6 +156,31 @@ etc st (Transducer stream) ea =
       co |>
     flip execStateT st
 
+etcM ::
+  (MonadBase IO m) =>
+  (forall x . m x -> IO x) ->
+  s ->
+  TransducerM m s a b ->
+  Managed (Box b a) ->
+  IO s
+etcM gen st (TransducerM stream) ea =
+  with ea $ \(Box co em) ->
+    ( em |>
+      toStream |>
+      stream |>
+      fromStream)
+      co |>
+    flip execStateT st |>
+    gen
+
+etcIdentity ::
+  (MonadBase IO Identity) =>
+  s ->
+  TransducerM Identity s a b ->
+  Managed (Box b a) ->
+  IO s
+etcIdentity = etcM generalize
+
 -- | turn an emitter into a stream
 toStream :: (MonadBase IO m) => Emitter a -> Stream (Of a) m ()
 toStream e = S.untilRight getNext
@@ -164,33 +197,7 @@ fromStream s c = go s
         continue <- liftBase (commit' c a)
         when continue (go str')
 
--- | create an emitter from a stream
-toEmit :: Buffer a -> Stream (Of a) IO () -> Managed (Emitter a)
-toEmit b s = Emitter <$> managed
-  (withBuffer b (Committer .> fromStream s) .> fmap snd)
-
--- | create a committer from a stream consumer
-toCommit :: Buffer a -> (Stream (Of a) IO () -> IO r) -> Managed (Committer a)
-toCommit b f = Committer <$> managed
-  (\c -> withBuffer b c (Emitter .> toStream .> f) |> fmap fst)
-
--- | create a committer from a fold
-toCommitFold :: Buffer a -> L.FoldM IO a () -> Managed (Committer a)
-toCommitFold b f = toCommit b (L.impurely S.foldM f .> fmap S.snd')
-
--- | insert a buffer into a stream
--- todo: generalize
-buffStream :: Buffer a -> Stream (Of a) IO () -> (Stream (Of a) IO () -> IO r) -> IO r
-buffStream b i o =
-  fmap snd $ withBuffer b
-  (Committer .> fromStream i)
-  (Emitter .> toStream .> o)
-
--- | connect a committer and emitter action via a buffer
-buff :: Buffer a -> (Committer a -> IO b) -> (Emitter a -> IO c) -> IO c
-buff b cio eio =
-  fmap snd $ withBuffer b (cio <. Committer) (eio <. Emitter)
-
+-- * buffering
 -- | wait for the first action, and then cancel the second
 waitCancel :: IO b -> IO a -> IO b
 waitCancel a b =
@@ -200,37 +207,42 @@ waitCancel a b =
   cancel b'
   pure a''
 
--- | connect a committer and emitter action via a buffer, cancelling the emitter on commision completion.
-buff' :: Buffer a -> (Committer a -> IO b) -> (Emitter a -> IO c) -> IO c
-buff' b cio eio = withSpawn b
+-- | connect a committer and emitter action via a buffer, cancelling the emitter on commision completion (Committer biased).
+withBufferC :: Buffer a -> (Committer a -> IO b) -> (Emitter a -> IO c) -> IO c
+withBufferC b cio eio = withSpawn b
   (\(i,o) ->
      waitCancel
      (eio $ Emitter o)
      (cio $ Committer i)
   )
 
--- | create a managed committer by fusing a committer
-fuseEmit :: Buffer a -> Emitter a -> Managed (Emitter a)
-fuseEmit b e = managed $ \e' ->
-    withBuffer b (fuse e . Committer) (e' . Emitter) |> fmap snd
+-- | connect a committer and emitter action via a buffer, cancelling the committer on emission completion. (Emitter biased)
+withBufferE :: Buffer a -> (Committer a -> IO b) -> (Emitter a -> IO c) -> IO b
+withBufferE b cio eio = withSpawn b
+  (\(i,o) ->
+     waitCancel
+     (cio $ Committer i)
+     (eio $ Emitter o)
+  )
 
--- | hook a committer to a buffer, creating a managed emitter
-buffEmit :: Buffer a -> (Committer a -> IO r) -> Managed (Emitter a)
-buffEmit b c = managed $ \e ->
-  withBuffer b (c . Committer) (e . Emitter) |> fmap snd
-
--- | create a managed committer by fusing a committer
-fuseCommit :: Buffer a -> Committer a -> Managed (Committer a)
-fuseCommit b c = managed $ \c' ->
-    withBuffer b (c' . Committer) ((`fuse` c) . Emitter) |> fmap fst
+-- | connect a committer and emitter action via a buffer, staying alive until both ends finish
+withBuffer_ :: Buffer a -> (Committer a -> IO b) -> (Emitter a -> IO c) -> IO c
+withBuffer_ b cio eio =
+  fmap snd $ withBuffer b (cio <. Committer) (eio <. Emitter)
 
 -- | hook an emitter to a buffer, creating a managed committer
 buffCommit :: Buffer a -> (Emitter a -> IO ()) -> Managed (Committer a)
-buffCommit b e = managed $ \c ->
-  withBuffer b (c . Committer) (e . Emitter) |> fmap fst
+buffCommit b e = managed $ \c -> withBufferE b c e
+
+-- | hook a committer to a buffer, creating a managed emitter
+buffEmit :: Buffer a -> (Committer a -> IO r) -> Managed (Emitter a)
+buffEmit b c = managed $ \e -> withBufferC b c e
 
 -- | create a managed, double-buffered box hooking up emitter and committer actions
-toBox :: Buffer a -> Buffer b -> (Emitter a -> IO ()) -> (Committer b -> IO ()) -> Managed (Box a b)
+toBox :: Buffer a -> Buffer b ->
+  (Emitter a -> IO ()) ->
+  (Committer b -> IO ()) ->
+  Managed (Box a b)
 toBox ba bb eio cio = Box <$> buffCommit ba eio <*> buffEmit bb cio
 
 -- | create a managed box from a box action, forgetting the interactions between emitter and committer that typically gum up the works
@@ -239,6 +251,85 @@ toBoxForget ba bb bio =
   let eio = bio . Box mempty
       cio = bio . (`Box` mempty) in
   toBox ba bb eio cio
+
+-- * streaming
+
+-- | create a committer from a stream consumer
+toCommit :: Buffer a -> (Stream (Of a) IO () -> IO r) -> Managed (Committer a)
+toCommit b f = managed (\c -> withBufferE b c (toStream .> f))
+
+-- | create a committer from a fold
+toCommitFold :: Buffer a -> L.FoldM IO a () -> Managed (Committer a)
+toCommitFold b f = toCommit b (L.impurely S.foldM f .> fmap S.snd')
+
+-- | create a committer from an IO sink
+toCommitIO :: Buffer a -> (a -> IO ()) -> Managed (Committer a)
+toCommitIO b sink = toCommitFold b (L.FoldM step begin done)
+  where
+    step x a = do
+        sink a
+        pure x
+    begin = pure ()
+    done = pure
+
+-- | create an emitter from a stream
+toEmit :: Buffer a -> Stream (Of a) IO () -> Managed (Emitter a)
+toEmit b s = managed (withBufferC b (fromStream s))
+
+-- | insert a buffer into a stream (Committer biased)
+buffStreamC :: Buffer a -> Stream (Of a) IO () -> (Stream (Of a) IO () -> IO r) -> IO r
+buffStreamC b i o = withBufferC b (fromStream i) (toStream .> o)
+
+-- | insert a buffer into a stream (Emitter biased)
+buffStreamE :: Buffer a -> Stream (Of a) IO () -> (Stream (Of a) IO () -> IO r) -> IO ()
+buffStreamE b i o = withBufferE b (fromStream i) (toStream .> o)
+
+
+-- * fusing
+
+-- | fuse an emitter directly to a committer
+fuse :: Emitter a -> Committer a -> IO ()
+fuse (Emitter e) (Committer c) = forever $ atomically $ do
+    a <- recv e
+    maybe (pure ()) (void <$> send c) a
+
+-- | connect an emitter with a committer and throw in an IO effect
+fuseM :: (a -> IO b) -> Emitter a -> Committer b -> IO ()
+fuseM io (Emitter e) (Committer c) = forever $ do
+    a <- atomically $ recv e
+    case a of
+      Nothing -> pure ()
+      Just a' -> do
+        b <- io a'
+        void $ atomically $ send c b
+
+-- | create a managed committer by fusing a committer
+fuseCommit :: Buffer a -> Committer a -> Managed (Committer a)
+fuseCommit b c = managed $ \c' -> withBufferE b c' (`fuse` c)
+
+-- | create a managed emmitter by fusing a emitter
+fuseEmit :: Buffer a -> Emitter a -> Managed (Emitter a)
+fuseEmit b e = managed $ withBufferC b (fuse e)
+
+-- | using fuse, it looks like Managed Boxes could form a Category, so here's a wrapper to try it out.
+newtype MBox a b = MBox (Managed (Box a b)) deriving (Monoid)
+
+instance Semigroup (MBox a b)
+
+instance Category MBox where
+  (MBox a) . (MBox b) = MBox $ do
+    (Box c e) <- b
+    (Box c' e') <- a
+    liftIO $ fuse e c'
+    pure (Box c e')
+
+  id = MBox $ do
+    (Box c e) <- toBox unbounded unbounded (const mempty) (const mempty)
+    liftIO $ fuse e c
+    pure (Box c e)
+
+
+-- * console
 
 -- | a single stdin committer action
 cStdin_ :: Committer Text -> IO ()
@@ -285,6 +376,8 @@ showStdout = contramap show <$> (cStdout 1000 unbounded :: Managed (Committer Te
 console :: Int -> Buffer Text -> Managed (Box Text Text)
 console n b = toBox b b (eStdout n) (cStdin n)
 
+-- * file operations
+
 -- | emit lines from a file
 emitLines :: FilePath -> Buffer Text -> Managed (Emitter Text)
 emitLines filePath b =
@@ -308,60 +401,33 @@ commitLines filePath b =
           liftIO (Text.hPutStrLn h s)
           loop rest
 
--- | commit to a monoidal IORef
-ioRef :: Semigroup m => IORef m -> Buffer m -> Managed (Committer m)
-ioRef ref b = toCommitFold b $
-  L.FoldM (\x a -> modifyIORef x (a <>) >> pure x) (pure ref) (const $ pure ())
+-- * iorefs
 
 -- | commit to a list IORef
-ioRef' :: IORef [b] -> Buffer b -> Managed (Committer b)
-ioRef' ref b = toCommitFold b $
+cIORef :: IORef [b] -> Buffer b -> Managed (Committer b)
+cIORef ref b = toCommitFold b $
   L.FoldM (\x a -> modifyIORef x (a:) >> pure x) (pure ref) (const $ pure ())
 
--- | fold an emitter through a transduction, to a list and state
-foldToList :: Buffer [b] -> Managed (Emitter a) -> s -> Transducer s a b -> IO ([b], s)
-foldToList b e s t = do
+-- | commit to a monoidal IORef
+cIORefM :: Semigroup m => IORef m -> Buffer m -> Managed (Committer m)
+cIORefM ref b = toCommitFold b $
+  L.FoldM (\x a -> modifyIORef x (a <>) >> pure x) (pure ref) (const $ pure ())
+
+-- | fold an emitter through a transduction, committing to a list
+toListIO :: Buffer b -> Managed (Emitter a) -> s -> Transducer s a b -> IO ([b], s)
+toListIO b e s t = do
     ref <- newIORef []
-    r <- etc s t (Box <$> contramap (:[]) <$> ioRef ref b <*> e)
+    r <- etc s t (Box <$> cIORef ref b <*> e)
     (,) <$> readIORef ref <*> pure r
 
--- | fold an emitter thru a transduction, to a list, ignoring the end state
-foldToList_ :: Buffer [b] -> Managed (Emitter a) -> s -> Transducer s a b -> IO [b]
-foldToList_ b e s t = fmap fst $ foldToList b e s t
+-- | get all commissions as a list
+getCommissions :: Managed (Emitter a) -> s -> Transducer s a b -> IO [b]
+getCommissions e s t = fst <$> toListIO P.unbounded e s t
 
--- | sleep for x seconds
-sleep :: Double -> IO ()
-sleep x = threadDelay (floor $ x * 1e6)
+-- | get all emissions
+getEmissions :: Int -> Managed (Emitter a) -> IO [a]
+getEmissions n e = fst <$> toListIO P.unbounded e () (Transducer $ S.take n)
 
--- | delay by x secs
-delay :: Double -> (a -> IO ()) -> (a -> IO ())
-delay x io a = sleep x >> io a
-
--- | send a delayed singleton emission
-delayedBy :: Double -> a -> Managed (Emitter a)
-delayedBy x q = do
-  liftIO $ sleep x
-  S.yield q |> toEmit (bounded 1)
-
--- | keeping a box open sometimes needs a long running emitter
-keepOpen :: Managed (Emitter a)
-keepOpen = toEmit (bounded 1) $ lift $ threadDelay (365 * 24 * 60 * 60 * 10 ^ 6)
-
--- | fuse an emitter directly to a committer
-fuse :: Emitter a -> Committer a -> IO ()
-fuse (Emitter e) (Committer c) = forever $ atomically $ do
-    a <- recv e
-    maybe (pure ()) (void <$> send c) a
-
--- | connect an emitter with a committer via an IO computation
-fuseM :: (a -> IO b) -> Emitter a -> Committer b -> IO ()
-fuseM io (Emitter e) (Committer c) = forever $ do
-    a <- atomically $ recv e
-    case a of
-      Nothing -> pure ()
-      Just a' -> do
-        b <- io a'
-        void $ atomically $ send c b
 
 -- | a modifier that feeds transformed commits back to the emits
 feedback :: (b -> a) -> Managed (Box a b) -> Managed (Box a b)
@@ -371,22 +437,6 @@ feedback f mbox = managed $ \k ->
       fuse (f <$> e) c
       k (Box c e)
 
--- | it looks like Managed Boxes could form a Category, so here's a wrapper to try it out.
-newtype MBox a b = MBox (Managed (Box a b)) deriving (Monoid)
-
-instance Semigroup (MBox a b)
-
-instance Category MBox where
-  (MBox a) . (MBox b) = MBox $ do
-    (Box c e) <- b
-    (Box c' e') <- a
-    liftIO $ fuse e c'
-    pure (Box c e')
-
-  id = MBox $ do
-    (Box c e) <- toBox unbounded unbounded (const mempty) (const mempty)
-    liftIO $ fuse e c
-    pure (Box c e)
 
 -- | keep valid emissions
 keeps
@@ -423,10 +473,6 @@ eRead = fmap (keeps parsed) . fmap (fmap Text.unpack)
 cShow :: (Show a) => Managed (Committer Text) -> Managed (Committer a)
 cShow c = contramap show <$> c
 
--- | convert a Pipe to a Transducer
-asPipe :: (Monad m) => Pipes.Pipe a b (StateT s m) () -> (Stream (Of a) (StateT s m) () -> Stream (Of b) (StateT s m) ())
-asPipe p s = ((s & Pipes.unfoldr S.next) Pipes.>-> p) & S.unfoldr Pipes.next
-
 -- | handle certain commissions
 handles
     :: ((b -> Constant (First b) b) -> (a -> Constant (First b) a))
@@ -440,10 +486,7 @@ handles k (Committer (Output send_)) = Committer $ Output (\a -> case match a of
   where
     match = getFirst . getConstant . k (Constant . First . Just)
 
--- | get all commissions as a list
-getCommissions :: Managed (Emitter a) -> s -> Transducer s a b -> IO [b]
-getCommissions = foldToList_ P.unbounded
+-- | convert a Pipe to a Transducer
+asPipe :: (Monad m) => Pipes.Pipe a b (StateT s m) () -> (Stream (Of a) (StateT s m) () -> Stream (Of b) (StateT s m) ())
+asPipe p s = ((s & Pipes.unfoldr S.next) Pipes.>-> p) & S.unfoldr Pipes.next
 
--- | get all emissions
-getEmissions :: Int -> Managed (Emitter a) -> IO [a]
-getEmissions n e = foldToList_ P.unbounded e () (Transducer $ S.take n)

@@ -26,6 +26,7 @@ import qualified Data.Text as Text
 import qualified Streaming.Prelude as S
 import qualified Data.Attoparsec.Text as A
 import Text.Read (readMaybe)
+import Etc.Time (sleep)
 
 data ActionComm
   = ActionReady -- action is ready

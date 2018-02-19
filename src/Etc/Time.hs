@@ -20,6 +20,15 @@ import Protolude
 import Control.Monad.Managed
 import qualified Streaming.Prelude as S
 import System.IO.Unsafe
+import Pipes.Concurrent
+
+-- | sleep for x seconds
+sleep :: Double -> IO ()
+sleep x = threadDelay (floor $ x * 1e6)
+
+-- | keeping a box open sometimes needs a long running emitter
+keepOpen :: Managed (Emitter a)
+keepOpen = toEmit (bounded 1) $ lift $ threadDelay (365 * 24 * 60 * 60 * 10 ^ 6)
 
 -- | a stream with suggested delays.  DiffTime is the length of time to wait since the start of the stream
 delayTimed :: S.Stream (S.Of (NominalDiffTime, a)) IO () -> S.Stream (S.Of a) IO ()
