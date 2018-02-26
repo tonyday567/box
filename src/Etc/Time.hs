@@ -37,6 +37,7 @@ keepOpen :: Managed (Emitter a)
 keepOpen = toEmit (bounded 1) $ lift $ threadDelay (365 * 24 * 60 * 60 * 10 ^ 6)
 
 -- | a stream with suggested delays.  DiffTime is the length of time to wait since the start of the stream
+-- > delayTimed (S.each (zip (fromIntegral <$> [1..10]) [1..10])) |> S.print
 delayTimed :: S.Stream (S.Of (NominalDiffTime, a)) IO () -> S.Stream (S.Of a) IO ()
 delayTimed s = do
   t0 <- lift getCurrentTime

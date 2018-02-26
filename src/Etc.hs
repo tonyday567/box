@@ -9,18 +9,27 @@
 
 -- | `emit` - `transduce` - `commit`
 --
--- like pipes-concurrency and MVC but with more pretentious names
+-- This library is a combination of ideas and code from [pipes-concurrency](https://hackage.haskell.org/package/pipes-concurrency) and [mvc](https://hackage.haskell.org/package/mvc) but with pretentious names.
+--
+-- > import Etc
+-- > import qualified Streaming.Prelude as S
+-- > let committer' = cStdout 100 unbounded
+-- > let emitter' = toEmit (bounded 1) (S.each ["hi","bye","q","x"])
+-- > let box' = Box <$> committer' <*> emitter'
+-- > let transducer' = Transducer $ \s -> s & S.takeWhile (/="q") & S.map ("echo: " <>)
+-- > etc () transducer' box'
+-- echo: hi
+-- echo: bye
 --
 module Etc
   ( Emitter(..)
   , Committer(..)
   , Box(..)
-  , MBox(..)
+  , BoxM(..)
+  , fuse_
+  , fuse
   , Transducer(..)
-  , TransducerM(..)
-  , TransducerM'(..)
   , etc
-  , etcM
   , toStream
   , fromStream
   , withBuffer
@@ -41,10 +50,10 @@ module Etc
   , toEmit
   , buffC
   , buffE
-  , fuse
-  , fuseM
   , fuseEmit
   , fuseCommit
+  , branchE
+  , alternate
   , cStdin_
   , cStdin
   , cStdin'
@@ -68,12 +77,13 @@ module Etc
   , handles
   , eParse
   , eRead
+  , eRead'
   , cShow
   , asPipe
   ) where
 
 import Control.Category
-import Control.Lens hiding ((:>), (.>), (|>))
+import Control.Lens hiding ((:>), (.>), (|>), (<|))
 import Control.Monad.Base (MonadBase, liftBase)
 import Control.Monad.Managed
 import Data.Functor.Constant
@@ -95,18 +105,25 @@ import qualified Pipes
 import qualified Pipes.Prelude as Pipes
 import qualified Streaming.Internal as S
 import qualified Streaming.Prelude as S
+-- import qualified Control.Concurrent.STM as STM
 
 -- $setup
--- >>> :set -XOverloadedStrings
--- >>> let b = Box <$> cStdout 100 (bounded 1) <*> toEmit (bounded 1) (S.each ["hi","bye","q","x"]) :: Managed (Box Text Text)
--- >>> let t = Transducer $ \s -> s & S.takeWhile (/="q") & S.map ("echo: " <>)
 --
+-- >>> :set -XOverloadedStrings
+-- >>> import Etc
+-- >>> import qualified Streaming.Prelude as S
+-- >>> let committer' = cStdout 100 unbounded
+-- >>> let emitter' = toEmit (bounded 1) (S.each ["hi","bye","q","x"])
+-- >>> let box' = Box <$> committer' <*> emitter'
+-- >>> let transducer' = Transducer $ \s -> s & S.takeWhile (/="q") & S.map ("echo: " <>)
+--
+
 -- | an Emitter emits values of type a. A Source of 'a's & a Producer of 'a's are the two obvious alternative but overloaded metaphors out there. It is a newtype warpper around pipes-concurrency Input to pick up the instances.
 --
 -- Naming is reversed in comparison to the 'Input' it wraps.  An Emitter 'reaches into itself' for the value to emit, where itself is an opaque thing from the pov of usage.  An Emitter is named for its' main action: it emits.
 --
--- >>>  with b $ (\e -> e |> emitter |> emit)
--- Just "hi"
+-- >>> with (S.each [0..] & toEmit unbounded) emit >>= print
+-- Just 0
 --
 newtype Emitter a = Emitter
   { emit :: IO (Maybe a)
@@ -152,9 +169,9 @@ instance Monoid (Emitter a) where
 --
 -- Naming is reversed in comparison to the 'Output' it wraps.  An Committer 'reaches out and absorbs' the value being committed; the value disappears into the opaque thing that is a Committer from the pov of usage.  An Committer is named for its' main action: it commits.
 --
--- >>> with b $ \b' -> commit (committer b') "something"
+-- >>> import Etc.Time
+-- >>> with (cStdout 100 unbounded) $ \c -> commit c "something" >> sleep 1
 -- something
--- True
 --
 newtype Committer a = Committer
   { commit :: a -> IO Bool
@@ -190,9 +207,6 @@ instance Decidable Committer where
 --
 -- a Box can also be seen as having an input tape and output tape, thus available for turing and finite-state machine metaphorics.
 --
--- >>> :t b
--- b :: Managed (Box Text Text)
---
 data Box c e = Box
   { committer :: Committer c
   , emitter :: Emitter e
@@ -208,31 +222,140 @@ instance Monoid (Box c e) where
   mempty = Box mempty mempty
   mappend = (<>)
 
+-- | using fuse, it looks like Managed Boxes could form a Category, so here's a wrapper to try it out.
+newtype BoxM a b =
+  BoxM (Managed (Box a b))
+  deriving (Monoid)
+
+instance Semigroup (BoxM a b)
+
+instance Profunctor BoxM where
+  dimap f g (BoxM mbox) = BoxM
+    (Box <$>
+      (contramap f . committer <$> mbox) <*>
+      (fmap g . emitter <$> mbox))
+
+instance Category BoxM where
+  (BoxM a) . (BoxM b) =
+    BoxM $ do
+      (Box c e) <- b
+      (Box c' e') <- a
+      liftIO $ fuse_ (pure . Just) e c'
+      pure (Box c e')
+  id =
+    BoxM $ do
+      (Box c e) <- toBox unbounded unbounded (const mempty) (const mempty)
+      liftIO $ fuse_ (pure . Just) e c
+      pure (Box c e)
+
+-- | fuse an emitter directly to a committer
+fuse_ :: (a -> IO (Maybe b)) -> Emitter a -> Committer b -> IO ()
+fuse_ f e c = go where
+  go = do
+    a <- emit e
+    fa <- maybe (pure Nothing) f a
+    void $ maybe (pure False) (commit c) fa
+    go
+
+-- | fuse a box
+--
+-- >>> let committer' = cStdout 100 unbounded
+-- >>> let emitter' = toEmit (bounded 1) (S.each ["hi","bye","q","x"])
+-- >>> let box' = Box <$> committer' <*> emitter'
+--
+-- > fuse (pure . Just . ("echo: " <>)) box'
+--
+-- echo: hi
+-- echo: bye
+-- echo: q
+-- echo: x
+--
+-- > fuse (pure . Just) $ Box <$> cStdout 2 (bounded 1) <*> emitter'
+--
+-- hi
+-- bye
+--
+-- > etc () (Transducer id) == fuseBox (pure . Just)
+--
+fuse :: (a -> IO (Maybe b)) -> Managed (Box b a) -> IO ()
+fuse f box = with box $ \(Box c e) -> fuse_ f e c
+
+-- | fuse-branch an emitter
+branchE :: Emitter a -> Committer a -> Emitter a
+branchE e c = Emitter $
+  do
+    a <- emit e
+    maybe (pure ()) (void <$> commit c) a
+    pure a
+
+-- | create a managed committer by fusing a committer
+fuseCommit :: (b -> IO (Maybe a)) -> Buffer b -> Committer a -> Managed (Committer b)
+fuseCommit f b c = managed $ \c' -> withBufferE b c' (\e -> fuse_ f e c)
+
+-- | create a managed emmitter by fusing a emitter
+fuseEmit :: (a -> IO (Maybe b)) -> Buffer b -> Emitter a -> Managed (Emitter b)
+fuseEmit f b e = managed $ withBufferC b (fuse_ f e)
+
+-- | alternate between two emitters
+-- > let e1 = eStdin 4 unbounded
+-- > let e2 = fmap show <$> (toEmit unbounded <| delayTimed (S.each (zip ((*2) . fromIntegral <$> [1..10]) [100..110]))) :: Managed (Emitter Text)
+-- > let b1 = Box <$> cStdout 20 unbounded <*> alternate (pure . pure) e2 e1 :: Managed (Box Text Text)
+-- > fuse (pure . Just) b1
+-- > getEmissions 10 (alternate (pure . pure) (eStdin 4 (bounded 1)) ( fmap show <$> (toEmit unbounded <| delayTimed (S.each (zip ((*2) . fromIntegral <$> [1..10]) [100..110])))))
+alternate :: (Show a) => (a -> IO (Maybe b)) ->
+  Managed (Emitter a) -> Managed (Emitter a) -> Managed (Emitter b)
+alternate f eL eR = managed $ \e ->
+  with eL $ \eL' -> with eR $ \eR' -> withBufferC (bounded 1) (go eL' eR') e
+  where
+    go el er c = do
+      void $ trye el er c
+      go er el c
+
+    trye e0 e1 c = do
+      a <- emit e0
+      case a of
+        Nothing -> do
+          a1 <- emit e1
+          case a1 of
+            Nothing -> pure False
+            Just a' -> do
+              print a'
+              fa <- f a'
+              case fa of
+                Nothing -> pure False
+                Just b -> commit c b
+        Just a' -> do
+          print a'
+          fa <- f a'
+          case fa of
+            Nothing -> pure False
+            Just b -> commit c b
+
+-- | a modifier that feeds commits back to the emitter
+feedback :: (b -> IO (Maybe a)) -> Managed (Box a b) -> Managed (Box a b)
+feedback f box =
+  managed $ \box' ->
+    with box $ \(Box c e) -> do
+      fuse_ f e c
+      box' (Box c e)
+
 -- | transduction
 -- [wiki](https://en.wikipedia.org/wiki/Transducer) says: "A transducer is a device that converts energy from one form to another." Translated to context, this Transducer converts a stream of type a to a stream of a different type.
 --
--- >>> :t t
--- t :: (Eq b, IsString b, Semigroup b) => Transducer s b b
---
 newtype Transducer s a b =
-  Transducer (forall m. Monad m =>
-                          Stream (Of a) (StateT s m) () -> Stream (Of b) (StateT s m) ())
+  Transducer
+  { transduce ::
+      forall m. Monad m =>
+      Stream (Of a) (StateT s m) () -> Stream (Of b) (StateT s m) ()
+  }
 
 instance Category (Transducer s) where
   (Transducer t1) . (Transducer t2) = Transducer (t1 . t2)
   id = Transducer id
 
--- | exposed monad version
-newtype TransducerM m s a b =
-  TransducerM (Stream (Of a) (StateT s m) () -> Stream (Of b) (StateT s m) ())
-
--- | stateless, exposed monad version
-newtype TransducerM' m a b =
-  TransducerM' (Stream (Of a) m () -> Stream (Of b) m ())
-
 -- | emit - transduce - commit
 --
--- >>> etc () t b
+-- >>> etc () transducer' box'
 -- echo: hi
 -- echo: bye
 --
@@ -241,20 +364,9 @@ newtype TransducerM' m a b =
 -- The combination of an input tape, an output tape, and a state-based stream computation lends itself to the etc computation as a [finite-state transducer](https://en.wikipedia.org/wiki/Finite-state_transducer) or mealy machine.
 --
 etc :: s -> Transducer s a b -> Managed (Box b a) -> IO s
-etc st (Transducer stream) ea =
-  with ea $ \(Box co em) ->
-    (em |> toStream |> stream |> fromStream) co |> flip execStateT st
-
-etcM ::
-     (MonadBase IO m)
-  => (forall x. m x -> IO x)
-  -> s
-  -> TransducerM m s a b
-  -> Managed (Box b a)
-  -> IO s
-etcM gen st (TransducerM stream) ea =
-  with ea $ \(Box co em) ->
-    (em |> toStream |> stream |> fromStream) co |> flip execStateT st |> gen
+etc st t box =
+  with box $ \(Box c e) ->
+    (e |> toStream |> transduce t |> fromStream) c |> flip execStateT st
 
 -- | turn an emitter into a stream
 toStream :: (MonadBase IO m) => Emitter a -> Stream (Of a) m ()
@@ -459,52 +571,6 @@ buffE ::
      Buffer a -> Stream (Of a) IO () -> (Stream (Of a) IO () -> IO r) -> IO ()
 buffE b i o = withBufferE b (fromStream i) (toStream .> o)
 
--- * fusing
--- | fuse an emitter directly to a committer
-fuse :: Emitter a -> Committer a -> IO ()
-fuse e c =
-  forever $ do
-    a <- emit e
-    maybe (pure ()) (void <$> commit c) a
-
--- | connect an emitter with a committer and throw in an IO effect
-fuseM :: (a -> IO b) -> Emitter a -> Committer b -> IO ()
-fuseM io e c =
-  forever $ do
-    a <- emit e
-    case a of
-      Nothing -> pure ()
-      Just a' -> do
-        b <- io a'
-        void $ commit c b
-
--- | create a managed committer by fusing a committer
-fuseCommit :: Buffer a -> Committer a -> Managed (Committer a)
-fuseCommit b c = managed $ \c' -> withBufferE b c' (`fuse` c)
-
--- | create a managed emmitter by fusing a emitter
-fuseEmit :: Buffer a -> Emitter a -> Managed (Emitter a)
-fuseEmit b e = managed $ withBufferC b (fuse e)
-
--- | using fuse, it looks like Managed Boxes could form a Category, so here's a wrapper to try it out.
-newtype MBox a b =
-  MBox (Managed (Box a b))
-  deriving (Monoid)
-
-instance Semigroup (MBox a b)
-
-instance Category MBox where
-  (MBox a) . (MBox b) =
-    MBox $ do
-      (Box c e) <- b
-      (Box c' e') <- a
-      liftIO $ fuse e c'
-      pure (Box c e')
-  id =
-    MBox $ do
-      (Box c e) <- toBox unbounded unbounded (const mempty) (const mempty)
-      liftIO $ fuse e c
-      pure (Box c e)
 
 -- * console
 -- | a single stdin committer action
@@ -613,14 +679,6 @@ getCommissions e s t = fst <$> toListIO unbounded e s t
 getEmissions :: Int -> Managed (Emitter a) -> IO [a]
 getEmissions n e = fst <$> toListIO unbounded e () (Transducer $ S.take n)
 
--- | a modifier that feeds transformed commits back to the emits
-feedback :: (b -> a) -> Managed (Box a b) -> Managed (Box a b)
-feedback f mbox =
-  managed $ \k ->
-    with mbox $ \(Box c e) -> do
-      fuse (f <$> e) c
-      k (Box c e)
-
 -- | keep valid emissions
 keeps ::
      ((b -> Constant (First b) b) -> (a -> Constant (First b) a))
@@ -652,6 +710,14 @@ eRead = fmap (keeps parsed) . fmap (fmap Text.unpack)
       case reads str of
         [(a, "")] -> Constant (getConstant (k a))
         _ -> pure str
+
+eRead' :: (Read a) => Managed (Emitter Text) -> Managed (Emitter (Either Text a))
+eRead' = fmap (fmap $ parsed . Text.unpack)
+  where
+    parsed str =
+      case reads str of
+        [(a, "")] -> Right a
+        _ -> Left (Text.pack str)
 
 -- | show an a
 cShow :: (Show a) => Managed (Committer Text) -> Managed (Committer a)
