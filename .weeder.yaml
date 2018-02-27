@@ -1,0 +1,7 @@
+- package:
+  - name: etc
+  - section:
+    - name: test:test
+    - message:
+      - name: Redundant build-depends entry
+      - depends: base

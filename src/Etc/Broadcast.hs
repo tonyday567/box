@@ -13,37 +13,37 @@ module Etc.Broadcast
 import Control.Concurrent.STM
 import Etc
 import Protolude
-import Control.Monad.Managed
+import Etc.Managed
 
-newtype Broadcaster a = Broadcaster
-  { unBroadcast :: TVar (Committer a)
+newtype Broadcaster m a = Broadcaster
+  { unBroadcast :: TVar (Committer m a)
   }
 
-broadcast :: IO (Committer a, Broadcaster a)
+broadcast :: IO (Committer STM a, Broadcaster STM a)
 broadcast = do
   tvar <- atomically $ newTVar mempty
   let output a = do
-          o <- atomically $ readTVar tvar
-          commit o a
+        o <- readTVar tvar
+        commit o a
   return (Committer output, Broadcaster tvar)
 
-subscribe :: Buffer a -> Broadcaster a -> Managed (Emitter a)
+subscribe :: Buffer a -> Broadcaster STM a -> Managed IO (Emitter STM a)
 subscribe b (Broadcaster tvar) = managed $ \e -> withBufferC b cio e where
   cio c = atomically $ modifyTVar' tvar (mappend c)
 
-newtype Funneler a = Funneler
-  { unFunnel :: TVar (Emitter a)
+newtype Funneler m a = Funneler
+  { unFunnel :: TVar (Emitter m a)
   }
 
-funnel :: STM (Funneler a, Emitter a)
+funnel :: STM (Funneler STM a, Emitter STM a)
 funnel = do
   tvar <- newTVar mempty
   let input =
         Emitter $ do
-          i <- atomically $ readTVar tvar
+          i <- readTVar tvar
           emit i
-  return (Funneler tvar, input)
+  pure (Funneler tvar, input)
 
-widen :: Buffer a -> Funneler a -> Managed (Committer a)
+widen :: Buffer a -> Funneler STM a -> Managed IO (Committer STM a)
 widen b (Funneler tvar) = managed $ \c -> withBufferE b c $ \e ->
   atomically $ modifyTVar' tvar (mappend e)

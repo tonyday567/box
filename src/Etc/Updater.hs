@@ -17,10 +17,10 @@ import Data.IORef (newIORef, readIORef, writeIORef)
 import Etc
 import Protolude
 import qualified Control.Foldl as Foldl
-import Control.Monad.Managed
+import Etc.Managed
 
 -- | An updater of a value a, where the updating process consists of an IO fold over an emitter
-data Updater a = forall e . Updater (FoldM IO e a) (Managed (Emitter e))
+data Updater a = forall e . Updater (FoldM IO e a) (Managed IO (Emitter STM e))
 
 instance Functor Updater where
     fmap f (Updater fold' e) = Updater (fmap f fold') e
@@ -58,7 +58,7 @@ instance Applicative Updater where
             fmap (fmap Left) eL <> fmap (fmap Right) eR
 
 -- | Create an `Updatable` value using a pure `Fold`
-updater :: Fold e a -> Managed (Emitter e) -> Updater a
+updater :: Fold e a -> Managed IO (Emitter STM e) -> Updater a
 updater fold' = Updater (Foldl.generalize fold')
 
 -- | run an action on each update
@@ -81,25 +81,25 @@ listen handler (Updater (FoldM step begin done) mController) =
         handler b
         return x'
 
-updates :: Buffer a -> Updater a -> Managed (Emitter a)
+updates :: Buffer a -> Updater a -> Managed IO (Emitter STM a)
 updates buffer (Updater (FoldM step begin done) e) = managed $ \e' ->
     withBufferC buffer cio e'
   where
     ioref c = do
       x <- begin
       a <- done x
-      _ <- commit c a
+      _ <- atomically $ commit c a
       newIORef x
 
     cio c = with e $ \e' -> do
       ioref' <- ioref c
       x  <- readIORef ioref'
-      e'' <- emit e'
+      e'' <- atomically $ emit e'
       case e'' of
         Nothing -> pure ()
         Just e''' -> do
           x' <- step x e'''
           a  <- done x'
-          _  <- commit c a
+          _  <- atomically $ commit c a
           writeIORef ioref' x'
 

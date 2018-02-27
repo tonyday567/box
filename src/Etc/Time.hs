@@ -24,7 +24,7 @@ import Data.Maybe
 import Data.Time
 import Etc
 import Protolude
-import Control.Monad.Managed
+import Etc.Managed
 import qualified Streaming.Prelude as S
 import System.IO.Unsafe
 
@@ -33,7 +33,7 @@ sleep :: Double -> IO ()
 sleep x = threadDelay (floor $ x * 1e6)
 
 -- | keeping a box open sometimes needs a long running emitter
-keepOpen :: Managed (Emitter a)
+keepOpen :: Managed IO (Emitter STM a)
 keepOpen = toEmit (bounded 1) $ lift $ threadDelay (365 * 24 * 60 * 60 * 10 ^ 6)
 
 -- | a stream with suggested delays.  DiffTime is the length of time to wait since the start of the stream
@@ -66,7 +66,7 @@ stampNow a = do
 
 -- | adding a time stamp
 -- todo: how to do this properly?
-emitStamp :: Managed (Emitter a) -> Managed (Emitter (Stamped a))
+emitStamp :: Managed IO (Emitter STM a) -> Managed IO (Emitter STM (Stamped a))
 emitStamp e = fmap (unsafePerformIO . stampNow) <$> e
 
 -- | todo: is this possible?

@@ -26,22 +26,18 @@ library:
   - Etc
   - Etc.Action
   - Etc.Broadcast
+  - Etc.Managed
   - Etc.Time
   - Etc.Updater
   dependencies:
   - async
   - attoparsec
-  - bytestring
   - contravariant
   - data-default
   - flow
   - foldl
-  - generic-lens-labels
   - lens
-  - managed
-  - mmorph
   - pipes
-  - pipes-concurrency
   - profunctors
   - protolude
   - stm

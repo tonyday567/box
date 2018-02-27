@@ -23,7 +23,7 @@ import Control.Category
 import Control.Concurrent.Async
 import Control.Lens hiding ((|>))
 import Control.Monad
-import Control.Monad.Managed
+import Etc.Managed
 import Data.Data
 import Data.Default
 import Data.IORef
@@ -62,7 +62,7 @@ data ControlComm
   | NoOpCC
   deriving (Show, Read, Eq, Data, Typeable, Generic)
 
-type ActionBox = Managed (Box ActionComm ActionComm)
+type ActionBox = Managed IO (Box STM ActionComm ActionComm)
 
 data ActionConfig = KeepAlive Double | AllowDeath deriving (Show, Eq)
 
@@ -72,7 +72,7 @@ instance Default ActionConfig where
 consoleActionBox :: ActionBox
 consoleActionBox =
   Box <$>
-  (contramap show <$> (cStdout 1000 unbounded :: Managed (Committer Text))) <*>
+  (contramap show <$> (cStdout 1000 unbounded :: Managed IO (Committer STM Text))) <*>
   eParse parseActionComms (eStdin 1000 unbounded)
 
 parseActionComms :: A.Parser ActionComm
@@ -91,21 +91,21 @@ parseActionComms =
 controlBox ::
   ActionConfig ->
   IO () ->
-  Box ActionComm ActionComm ->
+  Box STM ActionComm ActionComm ->
   IO Bool
 controlBox cfg app (Box c e) = do
   ref' <- newIORef Nothing
   go ref'
   where
     go ref = do
-      msg <- emit e
+      msg <- atomically $ emit e
       case msg of
         Nothing -> go ref
         Just msg' ->
           case msg' of
             ActionCheck -> do
               a <- readIORef ref
-              _ <- commit c $ ActionOn (bool True False (isNothing a))
+              _ <- atomically $ commit c $ ActionOn (bool True False (isNothing a))
               go ref
             ActionStart -> do
               a <- readIORef ref
@@ -113,13 +113,13 @@ controlBox cfg app (Box c e) = do
               go ref
             ActionStop ->
               cancel' ref >> go ref
-            ActionKill -> cancel' ref >> commit c ActionShutDown
+            ActionKill -> cancel' ref >> atomically (commit c ActionShutDown)
             ActionDied ->
               case cfg of
-                AllowDeath -> commit c ActionShutDown
+                AllowDeath -> atomically $ commit c ActionShutDown
                 KeepAlive x -> do
                   sleep x
-                  _ <- commit c ActionStart
+                  _ <- atomically $ commit c ActionStart
                   go ref
             ActionReset -> do
               a <- readIORef ref
@@ -128,9 +128,9 @@ controlBox cfg app (Box c e) = do
               go ref
             _ -> go ref
     start ref c' = do
-      a' <- async (app >> commit c' ActionDied)
+      a' <- async (app >> atomically (commit c' ActionDied))
       writeIORef ref (Just a')
-      commit c' ActionReady
+      atomically $ commit c' ActionReady
     cancel' ref = do
       mapM_ cancel =<< readIORef ref
       writeIORef ref Nothing
