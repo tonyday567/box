@@ -139,7 +139,7 @@ runControlBox :: ActionConfig -> IO () -> IO ()
 runControlBox cfg action =
   etc ()
   (Transducer $ \s -> s & S.takeWhile (/= ActionShutDown))
-  (toBoxForget (bounded 1) (bounded 1) (void <$> controlBox cfg action))
+  (buffBoxForget (bounded 1) (bounded 1) (void <$> controlBox cfg action))
 
 -- | send Start, wait for a Ready signal, run action, wait x secs, then send Quit
 testBox :: IO Bool
