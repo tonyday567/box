@@ -7,6 +7,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 -- | `emit` - `transduce` - `commit`
 --
@@ -28,20 +29,28 @@
 
 module Etc
   ( Emitter(..)
+  , liftE
   , Committer(..)
+  , liftC
   , Box(..)
+  , liftB
   -- , BoxM(..)
   , safeIOToSTM
-  , emitIO
+  , maybeEmit
+  , maybeCommit
   , fuse_
+  , fuseSTM_
   , fuse
   , forkEmit
+  , feedback
   , Transducer(..)
   , etc
+  , etcM
   , toStream
   , fromStream
   , withBuffer
   , withBufferE
+  , withBufferE'
   , withBufferC
   , withBuffer'
   , Buffer(..)
@@ -61,7 +70,9 @@ module Etc
   , buffE
   , fuseEmit
   , fuseCommit
-  , merge
+  , mergeEmit
+  , splitCommit
+  , contCommit
   , cStdin_
   , cStdin
   , cStdin'
@@ -120,6 +131,7 @@ import GHC.Conc
 --
 -- >>> :set -XOverloadedStrings
 -- >>> import Etc
+-- >>> import Etc.Time
 -- >>> import qualified Streaming.Prelude as S
 -- >>> let committer' = cStdout 100 unbounded
 -- >>> let emitter' = toEmit (bounded 1) (S.each ["hi","bye","q","x"])
@@ -174,6 +186,11 @@ instance (Alternative m, Monad m) => Monoid (Emitter m a) where
   mempty = empty
   mappend = (<>)
 
+-- | lift an emitter from STM to IO
+liftE :: Emitter STM a -> Emitter IO a
+liftE = Emitter . atomically . emit
+
+
 -- | a Committer commits values of type a (to the effects void presumably). A Sink for 'a's & a Consumer of 'a's are the other metaphors. It is a newtype wrapper around pipes-concurrency Output to pick up the instances.
 --
 -- Naming is reversed in comparison to the 'Output' it wraps.  An Committer 'reaches out and absorbs' the value being committed; the value disappears into the opaque thing that is a Committer from the pov of usage.  An Committer is named for its' main action: it commits.
@@ -181,6 +198,14 @@ instance (Alternative m, Monad m) => Monoid (Emitter m a) where
 -- >>> import Etc.Time
 -- >>> with (cStdout 100 unbounded) $ \c -> atomically (commit c "something") >> sleep 1
 -- something
+--
+-- >>> let cDelay = maybeCommit (\b -> sleep 0.1 >> pure (Just b)) <$> liftC <$> cStdout 100 unbounded
+-- >>> let cImmediate = liftC <$> cStdout 100 unbounded
+-- >>> (etcM () transducer' $ (Box <$> (cImmediate <> cDelay) <*> (liftE <$> emitter'))) >> sleep 1
+-- echo: hi
+-- echo: hi
+-- echo: bye
+-- echo: bye
 --
 newtype Committer m a = Committer
   { commit :: a -> m Bool
@@ -211,6 +236,10 @@ instance (Applicative m) => Decidable (Committer m) where
         Left b -> commit i1 b
         Right c -> commit i2 c
 
+-- | lift an committer from STM to IO
+liftC :: Committer STM a -> Committer IO a
+liftC c = Committer <| atomically . commit c
+
 -- | A Box is a product of a Committer m and an Emitter. Think of a box with an incoming wire and an outgoing wire. Now notice that the abstraction is reversable: are you looking at two wires from "inside a box"; a blind erlang grunt communicating with the outside world via the two thin wires, or are you looking from "outside the box"; interacting with a black box object. Either way, it's a box.
 -- And either way, the committer is contravariant and the emitter covariant so it forms a profunctor.
 --
@@ -230,6 +259,10 @@ instance (Alternative m, Monad m) => Semigroup (Box m c e) where
 instance (Alternative m, Monad m) => Monoid (Box m c e) where
   mempty = Box mempty mempty
   mappend = (<>)
+
+-- | lift a box from STM to IO
+liftB :: Box STM a b -> Box IO a b
+liftB (Box c e) = Box (liftC c) (liftE e)
 
 {-
 -- | using fuse, it looks like Managed Boxes could form a Category, so here's a wrapper to try it out.
@@ -287,6 +320,7 @@ asPipe p s = ((s & Pipes.unfoldr S.next) Pipes.>-> p) & S.unfoldr Pipes.next
 -- echo: hi
 -- echo: bye
 --
+--
 -- with etc, you're in the box, and inside the box, there are no effects: just a stream of 'a's, pure functions and state tracking. It's a nice way to code, and very friendly for the compiler. When the committing and emitting is done, the box collapses to state.
 --
 -- The combination of an input tape, an output tape, and a state-based stream computation lends itself to the etc computation as a [finite-state transducer](https://en.wikipedia.org/wiki/Finite-state_transducer) or mealy machine.
@@ -295,6 +329,27 @@ etc :: s -> Transducer s a b -> Managed IO (Box STM b a) -> IO s
 etc st t box =
   with box $ \(Box c e) ->
     (e |> toStreamIO |> transduce t |> fromStreamIO) c |> flip execStateT st
+
+etcM :: (MonadBase m m) => s -> Transducer s a b -> Managed m (Box m b a) -> m s
+etcM st t box =
+  with box $ \(Box c e) ->
+    (e |> toStreamM |> transduce t |> fromStreamM) c |> flip execStateT st
+
+-- | turn an emitter into a stream
+toStreamM :: (MonadBase m n) => Emitter m a -> Stream (Of a) n ()
+toStreamM e = S.untilRight getNext
+  where
+    getNext = maybe (Right ()) Left <$> liftBase (emit e)
+
+-- | turn a stream into a committer
+fromStreamM :: (MonadBase m n) => Stream (Of b) n () -> Committer m b -> n ()
+fromStreamM s c = go s
+  where
+    go str = do
+      eNxt <- S.next str -- uncons requires r ~ ()
+      forM_ eNxt $ \(a, str') -> do
+        continue <- liftBase $ commit c a
+        when continue (go str')
 
 -- | turn an emitter into a stream
 toStream :: (MonadBase STM m) => Emitter STM a -> Stream (Of a) m ()
@@ -391,21 +446,6 @@ safeIOToSTM req = unsafeIOToSTM $ do
     Right x -> return x
     Left e -> Control.Exception.throw e
 
--- * combining IO and STM
-
--- | transform an Emitter with an action
-emitIO :: (a -> IO (Maybe b)) -> Emitter STM a -> Emitter STM b
-emitIO f e = Emitter go where
-  go = do
-    a <- emit e
-    case a of
-      Nothing -> pure Nothing
-      Just a' -> do
-        fa <- safeIOToSTM $ f a'
-        case fa of
-          Nothing -> go
-          Just fa' -> pure (Just fa')
-
 -- | wait for the first action, and then cancel the second
 waitCancel :: IO b -> IO a -> IO b
 waitCancel a b =
@@ -437,6 +477,17 @@ withBufferE buffer fOutput fInput =
        waitCancel
          (fOutput output `Control.Exception.finally` atomically seal)
          (fInput input `Control.Exception.finally` atomically seal))
+
+-- | connect a committer and emitter action via a buffer, cancelling the emitter on commision completion (Emitter m biased).
+withBufferE' :: Buffer a -> (Committer IO a -> IO l) -> (Emitter IO a -> IO r) -> IO l
+withBufferE' buffer fOutput fInput =
+  bracket
+    (spawn' buffer)
+    (\(_, _, seal) -> atomically seal)
+    (\(output, input, seal) ->
+       waitCancel
+         (fOutput (liftC output) `Control.Exception.finally` atomically seal)
+         (fInput (liftE input) `Control.Exception.finally` atomically seal))
 
 -- | connect a committer and emitter action via a buffer, cancelling the committer on emission completion. (Committer m biased)
 withBufferC :: Buffer a -> (Committer STM a -> IO l) -> (Emitter STM a -> IO r) -> IO r
@@ -495,36 +546,85 @@ newest n = Newest n
 
 
 -- * primitives
+-- | maybe emit based on an action
+--
+-- >>> let c = fmap liftC $ cStdout 10 unbounded
+-- >>> let e = fmap liftE $ toEmit (bounded 1) (S.each ["hi","bye","q","x"])
+-- >>> let e' = maybeEmit (\a -> if a=="q" then (sleep 0.1 >> putStrLn "stole a q!" >> sleep 0.1 >> pure (Nothing)) else (pure (Just a))) <$> e :: Managed IO (Emitter IO Text)
+-- >>> fuse (pure . pure) $ Box <$> c <*> e'
+-- hi
+-- bye
+-- stole a q!
+-- x
+--
+maybeEmit :: (Monad m) => (a -> m (Maybe b)) -> Emitter m a -> Emitter m b
+maybeEmit f e = Emitter go where
+  go = do
+    a <- emit e
+    case a of
+      Nothing -> pure Nothing
+      Just a' -> do
+        fa <- f a'
+        case fa of
+          Nothing -> go
+          Just fa' -> pure (Just fa')
+
+-- | maybe commit based on an action
+--
+-- >>> let c = fmap liftC $ cStdout 10 unbounded
+-- >>> let e = fmap liftE $ toEmit (bounded 1) (S.each ["hi","bye","q","x"])
+-- >>> let c' = maybeCommit (\a -> if a=="q" then (putStrLn "stolen!" >> sleep 1 >> pure (Nothing)) else (pure (Just a))) <$> c :: Managed IO (Committer IO Text)
+-- >>> fuse (pure . pure) $ Box <$> c' <*> e
+-- hi
+-- bye
+-- stolen!
+-- x
+--
+maybeCommit :: (Monad m) => (b -> m (Maybe a)) -> Committer m a -> Committer m b
+maybeCommit f c = Committer go where
+  go b = do
+    fb <- f b
+    case fb of
+      Nothing -> pure True
+      Just fb' ->
+        commit c fb'
+
 -- | fuse an emitter directly to a committer
-fuse_ :: (a -> IO (Maybe b)) -> Emitter STM a -> Committer STM b -> IO ()
-fuse_ f e c = go where
+fuse_ :: (Monad m) => Emitter m a -> Committer m a -> m ()
+fuse_ e c = go where
+  go = do
+    a <- emit e
+    c' <- maybe (pure False) (commit c) a
+    when c' go
+
+-- | slightly more efficient version
+fuseSTM_ :: Emitter STM a -> Committer STM a -> IO ()
+fuseSTM_ e c = go where
   go = do
     b <- atomically $ do
       a <- emit e
-      fa <- maybe (pure Nothing) (safeIOToSTM . f) a
-      maybe (pure False) (commit c) fa
+      maybe (pure False) (commit c) a
     when b go
 
 -- | fuse a box
 --
 -- >>> let committer' = cStdout 100 unbounded
 -- >>> let emitter' = toEmit (bounded 1) (S.each ["hi","bye","q","x"])
--- >>> let box' = Box <$> committer' <*> emitter'
---
--- >>> fuse (pure . Just . ("echo: " <>)) box'
+-- >>> let box' = liftB <$> (Box <$> committer' <*> emitter')
+-- >>> fuse (pure . Just . ("echo: " <>)) box' >> sleep 1
 -- echo: hi
 -- echo: bye
 -- echo: q
 -- echo: x
 --
--- >>> fuse (pure . Just) $ Box <$> cStdout 2 (bounded 1) <*> emitter'
+-- >>> (fuse (pure . Just) $ liftB <$> (Box <$> cStdout 2 (bounded 1) <*> emitter')) >> sleep 1
 -- hi
 -- bye
 --
--- > etc () (Transducer id) == fuse (pure . pure)
+-- > etc () (Transducer id) == fuse (pure . pure) . fmap liftB
 --
-fuse :: (a -> IO (Maybe b)) -> Managed IO (Box STM b a) -> IO ()
-fuse f box = with box $ \(Box c e) -> fuse_ f e c
+fuse :: (Monad m) => (a -> m (Maybe b)) -> Managed m (Box m b a) -> m ()
+fuse f box = with box $ \(Box c e) -> fuse_ (maybeEmit f e) c
 
 -- | fuse-branch an emitter
 forkEmit :: (Monad m) => Emitter m a -> Committer m a -> Emitter m a
@@ -559,13 +659,13 @@ buffBoxForget ba bb bio =
       cio = bio . (`Box` mempty)
   in buffBox ba bb eio cio
 
--- | fuse a committer to a buffer, with a transformation
-fuseCommit :: Buffer b -> (b -> IO (Maybe a)) -> Committer STM a -> Managed IO (Committer STM b)
-fuseCommit b f c = managed $ \cio -> withBufferE b cio (\e -> fuse_ f e c)
+-- | fuse a committer to a buffer
+fuseCommit :: Buffer a -> Committer STM a -> Managed IO (Committer STM a)
+fuseCommit b c = managed $ \cio -> withBufferE b cio (`fuseSTM_` c)
 
 -- | fuse an emitter to a buffer, with a transformation
-fuseEmit :: Buffer b -> (a -> IO (Maybe b)) -> Emitter STM a -> Managed IO (Emitter STM b)
-fuseEmit b f e = managed $ \eio -> withBufferC b (fuse_ f e) eio
+fuseEmit :: Buffer a -> Emitter STM a -> Managed IO (Emitter STM a)
+fuseEmit b e = managed $ \eio -> withBufferC b (fuseSTM_ e) eio
 
 -- | merge two emitters
 --
@@ -574,7 +674,7 @@ fuseEmit b f e = managed $ \eio -> withBufferC b (fuse_ f e) eio
 -- >>> import Etc.Time (delayTimed)
 -- >>> let e1 = fmap show <$> (toEmit unbounded <| delayTimed (S.each (zip (fromIntegral <$> [1..10]) ['a'..]))) :: Managed IO (Emitter STM Text)
 -- >>> let e2 = fmap show <$> (toEmit unbounded <| delayTimed (S.each (zip ((\x -> fromIntegral x + 0.1) <$> [1..10]) (reverse ['a'..'z'])))) :: Managed IO (Emitter STM Text)
--- >>> let b = Box <$> cStdout 6 unbounded <*> merge unbounded unbounded (pure . pure) e1 e2
+-- >>> let b = Box <$> cStdout 6 unbounded <*> mergeEmit ((,) <$> e1 <*> e2)
 -- >>> etc () (Transducer identity) b
 -- 'a'
 -- 'z'
@@ -583,22 +683,42 @@ fuseEmit b f e = managed $ \eio -> withBufferC b (fuse_ f e) eio
 -- 'c'
 -- 'x'
 --
-merge :: Buffer b -> Buffer b -> (a -> IO (Maybe b)) ->
-  Managed IO (Emitter STM a) -> Managed IO (Emitter STM a) -> Managed IO (Emitter STM b)
-merge bL bR f eL eR = managed $ \e ->
-  with eL $ \eL' ->
-  with eR $ \eR' ->
+mergeEmit :: Managed IO (Emitter STM a, Emitter STM a) -> Managed IO (Emitter STM a)
+mergeEmit e = managed $ \eio ->
+  with e $ \e' ->
   fst <$> concurrently
-    (withBufferC bL (fuse_ f eL') e)
-    (withBufferC bR (fuse_ f eR') e)
+    (withBufferC unbounded (fuseSTM_ (fst e')) eio)
+    (withBufferC unbounded (fuseSTM_ (snd e')) eio)
+
+-- | merge two committers
+--
+-- not working
+--
+splitCommit :: Managed IO (Committer IO a) ->
+  Managed IO (Either (Committer IO a) (Committer IO a))
+splitCommit c = managed $ \kk ->
+  with c $ \c' ->
+    fst <$> concurrently
+      (withBufferE' unbounded (kk . Left) (`fuse_` c'))
+      (withBufferE' unbounded (kk . Right) (`fuse_` c'))
+
+-- | a failed attempt to understand the either continuation style
+contCommit :: Either (Committer m Text) (Committer m Text) -> Committer m Text
+contCommit ec = Committer $ \a ->
+  case ec of
+    Left lc ->  commit (contramap ("left " <>) lc) a
+    Right rc -> commit rc a
 
 -- | a box modifier that feeds commits back to the emitter
--- feedback :: (a -> IO (Maybe b)) -> Managed IO (Box STM a b) -> Managed IO (Box STM a b)
+feedback :: (a -> IO (Maybe b)) -> Managed IO (Box IO b a) -> Managed IO (Box IO b a)
+feedback f box = managed $ \bio -> with box $ \(Box c e) -> do
+  fuse_ (maybeEmit f e) c
+  bio (Box c e)
 
 -- | an emitter post-processor that cons transformed emissions back into the emitter
 feedbackE :: (a -> IO (Maybe a)) -> Emitter STM a -> Managed IO (Emitter STM a)
 feedbackE f e =
-      merge unbounded unbounded (pure . pure) (pure e) (fuseEmit unbounded f e)
+      mergeEmit ((,) <$> pure e <*> fuseEmit unbounded (maybeEmit (safeIOToSTM . f) e))
 
 -- * streaming
 -- | create a committer from a stream consumer
