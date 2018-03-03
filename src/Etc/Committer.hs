@@ -25,17 +25,22 @@ import Data.Semigroup hiding (First, getFirst)
 import Etc.Cont
 import Protolude hiding ((.), (<>))
 
--- | a Committer commits values of type a (to the effects void presumably). A Sink for 'a's & a Consumer of 'a's are the other metaphors. It is a newtype wrapper around pipes-concurrency Output to pick up the instances.
---
--- Naming is reversed in comparison to the 'Output' it wraps.  An Committer 'reaches out and absorbs' the value being committed; the value disappears into the opaque thing that is a Committer from the pov of usage.  An Committer is named for its' main action: it commits.
---
+-- $setup
+-- >>> :set -XOverloadedStrings
+-- >>> import Protolude
+-- >>> import Etc.IO
 -- >>> import Etc.Time
--- >>> with (cStdout 100 unbounded) $ \c -> atomically (commit c "something") >> sleep 1
+
+-- | a Committer a "commits" values of type a. A Sink and a Consumer are some other metaphors for this.
+--
+-- A Committer 'absorbs' the value being committed; the value disappears into the opaque thing that is a Committer from the pov of usage.
+--
+-- > with (cStdout 100) $ \c -> atomically (commit c "something") >> sleep 1
 -- something
 --
--- >>> let cDelay = maybeCommit (\b -> sleep 0.1 >> pure (Just b)) <$> liftC <$> cStdout 100 unbounded
--- >>> let cImmediate = liftC <$> cStdout 100 unbounded
--- >>> (etcM () transducer' $ (Box <$> (cImmediate <> cDelay) <*> (liftE <$> emitter'))) >> sleep 1
+-- > let cDelay = maybeCommit (\b -> sleep 0.1 >> pure (Just b)) <$> (liftC <$> cStdout 100)
+-- > let cImmediate = liftC <$> cStdout 100
+-- > (etcM () transducer' $ (Box <$> (cImmediate <> cDelay) <*> (liftE <$> emitter'))) >> sleep 1
 -- echo: hi
 -- echo: hi
 -- echo: bye
@@ -76,10 +81,10 @@ liftC c = Committer $ atomically . commit c
 
 -- | maybe commit based on an action
 --
--- >>> let c = fmap liftC $ cStdout 10 unbounded
--- >>> let e = fmap liftE $ toEmit (bounded 1) (S.each ["hi","bye","q","x"])
--- >>> let c' = maybeCommit (\a -> if a=="q" then (putStrLn "stolen!" >> sleep 1 >> pure (Nothing)) else (pure (Just a))) <$> c :: Managed IO (Committer IO Text)
--- >>> fuse (pure . pure) $ Box <$> c' <*> e
+-- > let c = fmap liftC $ cStdout 10
+-- > let e = fmap liftE $ toEmit (S.each ["hi","bye","q","x"])
+-- > let c' = maybeCommit (\a -> if a=="q" then (putStrLn "stolen!" >> sleep 1 >> pure (Nothing)) else (pure (Just a))) <$> c :: Managed IO (Committer IO Text)
+-- > fuse (pure . pure) $ Box <$> c' <*> e
 -- hi
 -- bye
 -- stolen!

@@ -46,4 +46,26 @@ import Etc.Stream
 import Etc.Time
 import Etc.Transducer
 
+-- $setup
+-- >>> :set -XOverloadedStrings
+-- >>> import Protolude
+-- >>> import Etc
+
+-- | a Committer a "commits" values of type a. A Sink and a Consumer are some other metaphors for this.
+--
+-- A Committer 'absorbs' the value being committed; the value disappears into the opaque thing that is a Committer from the pov of usage.
+--
+--
+--
+-- >>> with ((cStdout 100)::Cont IO (Committer STM Text)) $ \c -> atomically (commit c "something") >> sleep 1
+-- something
+--
+-- > let cDelay = maybeCommit (\b -> sleep 0.1 >> pure (Just b)) <$> (liftC <$> cStdout 100)
+-- > let cImmediate = liftC <$> cStdout 100
+-- > (etcM () transducer' $ (Box <$> (cImmediate <> cDelay) <*> (liftE <$> emitter'))) >> sleep 1
+-- echo: hi
+-- echo: hi
+-- echo: bye
+-- echo: bye
+--
 
