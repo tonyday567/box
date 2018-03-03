@@ -26,9 +26,16 @@ library:
   - Etc
   - Etc.Action
   - Etc.Broadcast
-  - Etc.Managed
+  - Etc.Box
+  - Etc.Connectors
+  - Etc.Cont
+  - Etc.Emitter
+  - Etc.Committer
+  - Etc.Stream
   - Etc.Time
+  - Etc.Transducer
   - Etc.Updater
+  - Etc.IO
   dependencies:
   - async
   - attoparsec

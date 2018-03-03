@@ -11,9 +11,11 @@ module Etc.Broadcast
   ) where
 
 import Control.Concurrent.STM
-import Etc
+import Etc.Box
+import Etc.Committer
+import Etc.Cont
+import Etc.Emitter
 import Protolude
-import Etc.Managed
 
 newtype Broadcaster m a = Broadcaster
   { unBroadcast :: TVar (Committer m a)
@@ -27,9 +29,10 @@ broadcast = do
         commit o a
   return (Committer output, Broadcaster tvar)
 
-subscribe :: Buffer a -> Broadcaster STM a -> Managed IO (Emitter STM a)
-subscribe b (Broadcaster tvar) = managed $ \e -> withBufferC b cio e where
-  cio c = atomically $ modifyTVar' tvar (mappend c)
+subscribe :: Broadcaster STM a -> Cont IO (Emitter STM a)
+subscribe (Broadcaster tvar) = Cont $ \e -> queueE cio e
+  where
+    cio c = atomically $ modifyTVar' tvar (mappend c)
 
 newtype Funneler m a = Funneler
   { unFunnel :: TVar (Emitter m a)
@@ -44,6 +47,6 @@ funnel = do
           emit i
   pure (Funneler tvar, input)
 
-widen :: Buffer a -> Funneler STM a -> Managed IO (Committer STM a)
-widen b (Funneler tvar) = managed $ \c -> withBufferE b c $ \e ->
-  atomically $ modifyTVar' tvar (mappend e)
+widen :: Funneler STM a -> Cont IO (Committer STM a)
+widen (Funneler tvar) =
+  Cont $ \c -> queueC c $ \e -> atomically $ modifyTVar' tvar (mappend e)

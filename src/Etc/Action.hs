@@ -23,20 +23,18 @@ import Control.Category
 import Control.Concurrent.Async
 import Control.Lens hiding ((|>))
 import Control.Monad
-import Etc.Managed
+import qualified Data.Attoparsec.Text as A
 import Data.Data
 import Data.Default
 import Data.IORef
 import Data.Semigroup
+import qualified Data.Text as Text
 import Etc
 import Flow
-import GHC.Generics 
+import GHC.Generics
 import Protolude hiding ((.))
-import qualified Data.Text as Text
 import qualified Streaming.Prelude as S
-import qualified Data.Attoparsec.Text as A
 import Text.Read (readMaybe)
-import Etc.Time (sleep)
 
 data ActionComm
   = ActionReady -- action is ready
@@ -62,25 +60,25 @@ data ControlComm
   | NoOpCC
   deriving (Show, Read, Eq, Data, Typeable, Generic)
 
-type ActionBox = Managed IO (Box STM ActionComm ActionComm)
+type ActionBox = Cont IO (Box STM ActionComm ActionComm)
 
-data ActionConfig = KeepAlive Double | AllowDeath deriving (Show, Eq)
+data ActionConfig
+  = KeepAlive Double
+  | AllowDeath
+  deriving (Show, Eq)
 
 instance Default ActionConfig where
   def = AllowDeath
 
 consoleActionBox :: ActionBox
 consoleActionBox =
-  Box <$>
-  (contramap show <$> (cStdout 1000 unbounded :: Managed IO (Committer STM Text))) <*>
-  eParse parseActionComms (eStdin 1000 unbounded)
+  Box <$> (contramap show <$> (cStdout 1000 :: Cont IO (Committer STM Text))) <*>
+  eParse parseActionComms (eStdin 1000)
 
 parseActionComms :: A.Parser ActionComm
 parseActionComms =
-  A.string "q" *> return ActionStop <|>
-  A.string "s" *> return ActionStart <|>
-  A.string "x" *> return ActionKill <|>
-  do
+  A.string "q" *> return ActionStop <|> A.string "s" *> return ActionStart <|>
+  A.string "x" *> return ActionKill <|> do
     res <- readMaybe . Text.unpack <$> A.takeText
     case res of
       Nothing -> mzero
@@ -88,11 +86,7 @@ parseActionComms =
 
 -- | an effect that can be started and stopped
 -- committer is an existence test
-controlBox ::
-  ActionConfig ->
-  IO () ->
-  Box STM ActionComm ActionComm ->
-  IO Bool
+controlBox :: ActionConfig -> IO () -> Box STM ActionComm ActionComm -> IO Bool
 controlBox cfg app (Box c e) = do
   ref' <- newIORef Nothing
   go ref'
@@ -105,14 +99,14 @@ controlBox cfg app (Box c e) = do
           case msg' of
             ActionCheck -> do
               a <- readIORef ref
-              _ <- atomically $ commit c $ ActionOn (bool True False (isNothing a))
+              _ <-
+                atomically $ commit c $ ActionOn (bool True False (isNothing a))
               go ref
             ActionStart -> do
               a <- readIORef ref
               when (isNothing a) (void $ start ref c)
               go ref
-            ActionStop ->
-              cancel' ref >> go ref
+            ActionStop -> cancel' ref >> go ref
             ActionKill -> cancel' ref >> atomically (commit c ActionShutDown)
             ActionDied ->
               case cfg of
@@ -137,24 +131,25 @@ controlBox cfg app (Box c e) = do
 
 runControlBox :: ActionConfig -> IO () -> IO ()
 runControlBox cfg action =
-  etc ()
-  (Transducer $ \s -> s & S.takeWhile (/= ActionShutDown))
-  (buffBoxForget (bounded 1) (bounded 1) (void <$> controlBox cfg action))
+  etc
+    ()
+    (Transducer $ \s -> s & S.takeWhile (/= ActionShutDown))
+    (boxForgetPlug (void <$> controlBox cfg action))
 
 -- | send Start, wait for a Ready signal, run action, wait x secs, then send Quit
 testBox :: IO Bool
-testBox = cb where
-  action = sequence_ $
-    (\x -> putStrLn x >> sleep 1) .
-    (show :: Integer -> Text) <$>
-    reverse [0..10]
-  cb = with consoleActionBox (controlBox (KeepAlive 3) action)
-
+testBox = cb
+  where
+    action =
+      sequence_ $
+      (\x -> putStrLn x >> sleep 1) . (show :: Integer -> Text) <$>
+      reverse [0 .. 10]
+    cb = with consoleActionBox (controlBox (KeepAlive 3) action)
   -- buff (bounded 1)
   -- ActionStart
   -- ActionReady
   -- ActionQuit
 
 timeOut :: Double -> ActionBox
-timeOut t = Box <$> mempty <*>
-  ((lift (sleep t) >> S.yield ActionStop) |> toEmit (bounded 1))
+timeOut t =
+  Box <$> mempty <*> ((lift (sleep t) >> S.yield ActionStop) |> toEmit)
