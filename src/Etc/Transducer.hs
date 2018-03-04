@@ -10,16 +10,6 @@
 
 -- | `transduce`
 --
--- > import Etc
--- > import qualified Streaming.Prelude as S
--- > let committer' = cStdout 100 unbounded
--- > let emitter' = toEmit (bounded 1) (S.each ["hi","bye","q","x"])
--- > let box' = Box <$> committer' <*> emitter'
--- > let transducer' = Transducer $ \s -> s & S.takeWhile (/="q") & S.map ("echo: " <>)
--- > etc () transducer' box'
--- echo: hi
--- echo: bye
---
 module Etc.Transducer
   ( Transducer(..)
   , etc
@@ -65,11 +55,6 @@ asPipe ::
 asPipe p s = ((s & Pipes.unfoldr S.next) Pipes.>-> p) & S.unfoldr Pipes.next
 
 -- | emit - transduce - commit
---
--- >>> etc () transducer' box'
--- echo: hi
--- echo: bye
---
 --
 -- with etc, you're in the box, and inside the box, there are no effects: just a stream of 'a's, pure functions and state tracking. It's a nice way to code, and very friendly for the compiler. When the committing and emitting is done, the box collapses to state.
 --

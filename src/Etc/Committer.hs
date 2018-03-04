@@ -6,7 +6,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -Wall #-}
-{-# OPTIONS_GHC -fno-warn-type-defaults #-}
 
 -- | `commit`
 module Etc.Committer
@@ -25,26 +24,9 @@ import Data.Semigroup hiding (First, getFirst)
 import Etc.Cont
 import Protolude hiding ((.), (<>))
 
--- $setup
--- >>> :set -XOverloadedStrings
--- >>> import Protolude
--- >>> import Etc.IO
--- >>> import Etc.Time
-
 -- | a Committer a "commits" values of type a. A Sink and a Consumer are some other metaphors for this.
 --
 -- A Committer 'absorbs' the value being committed; the value disappears into the opaque thing that is a Committer from the pov of usage.
---
--- > with (cStdout 100) $ \c -> atomically (commit c "something") >> sleep 1
--- something
---
--- > let cDelay = maybeCommit (\b -> sleep 0.1 >> pure (Just b)) <$> (liftC <$> cStdout 100)
--- > let cImmediate = liftC <$> cStdout 100
--- > (etcM () transducer' $ (Box <$> (cImmediate <> cDelay) <*> (liftE <$> emitter'))) >> sleep 1
--- echo: hi
--- echo: hi
--- echo: bye
--- echo: bye
 --
 newtype Committer m a = Committer
   { commit :: a -> m Bool
@@ -81,15 +63,6 @@ liftC c = Committer $ atomically . commit c
 
 -- | maybe commit based on an action
 --
--- > let c = fmap liftC $ cStdout 10
--- > let e = fmap liftE $ toEmit (S.each ["hi","bye","q","x"])
--- > let c' = maybeCommit (\a -> if a=="q" then (putStrLn "stolen!" >> sleep 1 >> pure (Nothing)) else (pure (Just a))) <$> c :: Managed IO (Committer IO Text)
--- > fuse (pure . pure) $ Box <$> c' <*> e
--- hi
--- bye
--- stolen!
--- x
---
 maybeCommit :: (Monad m) => (b -> m (Maybe a)) -> Committer m a -> Committer m b
 maybeCommit f c = Committer go
   where
@@ -99,7 +72,7 @@ maybeCommit f c = Committer go
         Nothing -> pure True
         Just fb' -> commit c fb'
 
--- | show an a
+-- | commit a "show a"
 cShow :: (Show a) => Cont IO (Committer STM Text) -> Cont IO (Committer STM a)
 cShow c = contramap show <$> c
 

@@ -56,16 +56,7 @@ fuseSTM_ e c = go
 
 -- | fuse a box
 --
--- >>> let committer' = cStdout 100
--- >>> let emitter' = toEmit (S.each ["hi","bye","q","x"])
--- >>> let box' = liftB <$> (Box <$> committer' <*> emitter')
--- >>> fuse (pure . Just . ("echo: " <>)) box' >> sleep 1
--- echo: hi
--- echo: bye
--- echo: q
--- echo: x
---
--- >>> (fuse (pure . Just) $ liftB <$> (Box <$> cStdout 2 <*> emitter')) >> sleep 1
+-- > (fuse (pure . Just) $ liftB <$> (Box <$> cStdout 2 <*> emitter')) >> sleep 1
 -- hi
 -- bye
 --
@@ -94,18 +85,6 @@ fuseEmit e = Cont $ \eio -> queueE (fuseSTM_ e) eio
 -- | merge two emitters
 --
 -- This differs from `liftA2 (<>)` in that the monoidal (and alternative) instance of an Emitter is left-biased (The left emitter exhausts before the right one is begun). This merge is concurrent.
---
--- >>> import Etc.Time (delayTimed)
--- >>> let e1 = fmap show <$> (toEmit <| delayTimed (S.each (zip (fromIntegral <$> [1..10]) ['a'..]))) :: Cont IO (Emitter STM Text)
--- >>> let e2 = fmap show <$> (toEmit <| delayTimed (S.each (zip ((\x -> fromIntegral x + 0.1) <$> [1..10]) (reverse ['a'..'z'])))) :: Cont IO (Emitter STM Text)
--- >>> let b = Box <$> cStdout 6 <*> mergeEmit ((,) <$> e1 <*> e2)
--- >>> etc () (Transducer identity) b
--- 'a'
--- 'z'
--- 'b'
--- 'y'
--- 'c'
--- 'x'
 --
 mergeEmit :: Cont IO (Emitter STM a, Emitter STM a) -> Cont IO (Emitter STM a)
 mergeEmit e =

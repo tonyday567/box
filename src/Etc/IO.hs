@@ -69,7 +69,7 @@ eStdin n = cStdin n |> emitPlug
 
 -- | read from console
 readStdin :: Read a => Cont IO (Emitter STM a)
-readStdin = eRead (eStdin 1000)
+readStdin = maybeEmit (pure . either (const Nothing) Just) <$> eRead (eStdin 1000)
 
 -- | a single stdout emitter action
 eStdout_ :: (Print a) => Emitter STM a -> IO ()
