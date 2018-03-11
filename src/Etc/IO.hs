@@ -40,6 +40,7 @@ import Etc.Box
 import Etc.Committer
 import Etc.Cont
 import Etc.Emitter
+import Etc.Plugs
 import Etc.Stream
 import Etc.Transducer
 import Flow
@@ -67,9 +68,9 @@ cStdin' = forever . cStdin_
 eStdin :: Int -> Cont IO (Emitter STM Text)
 eStdin n = cStdin n |> emitPlug
 
--- | read from console
+-- | read from console, throwing away read errors
 readStdin :: Read a => Cont IO (Emitter STM a)
-readStdin = maybeEmit (pure . either (const Nothing) Just) <$> eRead (eStdin 1000)
+readStdin = emap (pure . either (const Nothing) Just) . eRead <$> eStdin 1000
 
 -- | a single stdout emitter action
 eStdout_ :: (Print a) => Emitter STM a -> IO ()

@@ -11,9 +11,8 @@
 module Etc.Committer
   ( Committer(..)
   , liftC
-  , maybeCommit
+  , cmap
   , handles
-  , cShow
   ) where
 
 import Control.Category
@@ -21,7 +20,6 @@ import Control.Lens hiding ((:>), (.>), (<|), (|>))
 import Data.Functor.Constant
 import Data.Functor.Contravariant.Divisible
 import Data.Semigroup hiding (First, getFirst)
-import Etc.Cont
 import Protolude hiding ((.), (<>))
 
 -- | a Committer a "commits" values of type a. A Sink and a Consumer are some other metaphors for this.
@@ -57,14 +55,14 @@ instance (Applicative m) => Decidable (Committer m) where
         Left b -> commit i1 b
         Right c -> commit i2 c
 
--- | lift an committer from STM to IO
+-- | lift a committer from STM to IO
 liftC :: Committer STM a -> Committer IO a
 liftC c = Committer $ atomically . commit c
 
--- | maybe commit based on an action
+-- | This is a contramapMaybe, if such a thing existed, as the contravariant version of a `mapMaybe`.  See [witherable](https://hackage.haskell.org/package/witherable)
 --
-maybeCommit :: (Monad m) => (b -> m (Maybe a)) -> Committer m a -> Committer m b
-maybeCommit f c = Committer go
+cmap :: (Monad m) => (b -> m (Maybe a)) -> Committer m a -> Committer m b
+cmap f c = Committer go
   where
     go b = do
       fb <- f b
@@ -72,11 +70,7 @@ maybeCommit f c = Committer go
         Nothing -> pure True
         Just fb' -> commit c fb'
 
--- | commit a "show a"
-cShow :: (Show a) => Cont IO (Committer STM Text) -> Cont IO (Committer STM a)
-cShow c = contramap show <$> c
-
--- | handle certain commissions
+-- | prism handler
 handles ::
      (Monad m)
   => ((b -> Constant (First b) b) -> (a -> Constant (First b) a))

@@ -9,11 +9,9 @@
 
 -- | `emit` - `transduce` - `commit`
 --
--- This library is a combination of ideas and code from [pipes-concurrency](https://hackage.haskell.org/package/pipes-concurrency) and [mvc](https://hackage.haskell.org/package/mvc) but with pretentious names.
+-- This library follows the ideas and code from [pipes-concurrency](https://hackage.haskell.org/package/pipes-concurrency) and [mvc](https://hackage.haskell.org/package/mvc) but with some polymorphic tweaks and definitively more pretentious names.
 --
 --
--- https://www.schoolofhaskell.com/school/advanced-haskell/beautiful-concurrency/3-software-transactional-memory
--- 
 module Etc
   ( -- $setup
     -- $commit
@@ -25,6 +23,8 @@ module Etc
   , module Etc.Cont
   , module Etc.Emitter
   , module Etc.IO
+  , module Etc.Plugs
+  , module Etc.Queue
   , module Etc.Stream
   , module Etc.Time
   , module Etc.Transducer
@@ -36,6 +36,8 @@ import Etc.Connectors
 import Etc.Cont
 import Etc.Emitter
 import Etc.IO
+import Etc.Plugs
+import Etc.Queue
 import Etc.Stream
 import Etc.Time
 import Etc.Transducer
@@ -57,11 +59,10 @@ import Etc.Transducer
 -- something
 -- True
 --
--- >>> let cDelay = maybeCommit (\b -> sleep 0.1 >> pure (Just b)) <$> (liftC <$> cStdout 100)
+-- The monoid instance sends each commit to both mappended committers. Delaying effects are introduced to these examples to keep stdout clear of race effects.
+--
+-- >>> let cDelay = cmap (\b -> sleep 0.1 >> pure (Just b)) <$> (liftC <$> cStdout 100)
 -- >>> let cImmediate = liftC <$> cStdout 100
---
--- The monoid instance sends each commit to both mappended committers
---
 -- >>> (etcM () transducer' $ (Box <$> (cImmediate <> cDelay) <*> (liftE <$> emitter'))) >> sleep 1
 -- echo: hi
 -- echo: hi
@@ -70,12 +71,23 @@ import Etc.Transducer
 --
 -- >>> let c = fmap liftC $ cStdout 10
 -- >>> let e = fmap liftE $ toEmit (S.each ["hi","bye","q","x"])
--- >>> let c' = maybeCommit (\a -> if a=="q" then (sleep 1 >> putStrLn "stolen!" >> sleep 1 >> pure (Nothing)) else (pure (Just a))) <$> c :: Cont IO (Committer IO Text)
+-- >>> let c' = cmap (\a -> if a=="q" then (sleep 1 >> putStrLn "stolen!" >> sleep 1 >> pure (Nothing)) else (pure (Just a))) <$> c :: Cont IO (Committer IO Text)
 -- >>> fuse (pure . pure) $ Box <$> c' <*> e
 -- hi
 -- bye
 -- stolen!
 -- x
+--
+-- prism handler
+--
+-- >>> import Control.Lens (_Right)
+-- >>> let e2 = (fmap (\x -> Right (x <> "_right")) <$> e) <> (fmap (\x -> Left (x <> "_left")) <$> e)
+-- >>> let cright = handles _Right <$> c
+-- >>> fuse (pure . pure) $ Box <$> cright <*> e2
+-- hi_right
+-- bye_right
+-- q_right
+-- x_right
 --
 
 -- $emit
@@ -85,7 +97,7 @@ import Etc.Transducer
 --
 -- >>> let c = fmap liftC $ cStdout 10
 -- >>> let e = fmap liftE $ toEmit (S.each ["hi","bye","q","x"])
--- >>> let e' = maybeEmit (\a -> if a=="q" then (sleep 0.1 >> putStrLn "stole a q!" >> sleep 0.1 >> pure (Nothing)) else (pure (Just a))) <$> e :: Cont IO (Emitter IO Text)
+-- >>> let e' = emap (\a -> if a=="q" then (sleep 0.1 >> putStrLn "stole a q!" >> sleep 0.1 >> pure (Nothing)) else (pure (Just a))) <$> e :: Cont IO (Emitter IO Text)
 -- >>> fuse (pure . pure) $ Box <$> c <*> e'
 -- hi
 -- bye
@@ -94,8 +106,8 @@ import Etc.Transducer
 --
 -- >>> let e1 = fmap show <$> (toEmit $ delayTimed (S.each (zip (fromIntegral <$> [1..10]) ['a'..]))) :: Cont IO (Emitter STM Text)
 -- >>> let e2 = fmap show <$> (toEmit $ delayTimed (S.each (zip ((\x -> fromIntegral x + 0.1) <$> [1..10]) (reverse ['a'..'z'])))) :: Cont IO (Emitter STM Text)
--- >>> let b = Box <$> cStdout 6 <*> mergeEmit ((,) <$> e1 <*> e2)
--- >>> etc () (Transducer identity) b
+-- >>> let e12 = e1 <> e2
+-- >>> etc () (Transducer identity) $ Box <$> cStdout 6 <*> emerge ((,) <$> e1 <*> e2)
 -- 'a'
 -- 'z'
 -- 'b'
@@ -103,10 +115,14 @@ import Etc.Transducer
 -- 'c'
 -- 'x'
 --
-
-
-
-
+-- >>> etc () (Transducer identity) $ Box <$> cStdout 6 <*> (liftA2 (<>) e1 e2)
+-- 'a'
+-- 'z'
+-- 'b'
+-- 'y'
+-- 'c'
+-- 'x'
+--
 
 -- $transduce
 --

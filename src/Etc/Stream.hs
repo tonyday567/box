@@ -26,6 +26,7 @@ import Etc.Box
 import Etc.Committer
 import Etc.Cont
 import Etc.Emitter
+import Etc.Queue
 import Etc.Transducer
 import Flow
 import Protolude hiding ((.), (<>))

@@ -19,7 +19,7 @@ module Etc.Connectors
   , feedbackE
   , fuseEmit
   , fuseCommit
-  , mergeEmit
+  , emerge
   , splitCommit
   , contCommit
   ) where
@@ -28,6 +28,7 @@ import Control.Category
 import Control.Lens hiding ((:>), (.>), (<|), (|>))
 import Data.Semigroup hiding (First, getFirst)
 import Etc.Box
+import Etc.Queue
 import Etc.Committer
 import Etc.Cont
 import Etc.Emitter
@@ -63,7 +64,7 @@ fuseSTM_ e c = go
 -- > etc () (Transducer id) == fuse (pure . pure) . fmap liftB
 --
 fuse :: (Monad m) => (a -> m (Maybe b)) -> Cont m (Box m b a) -> m ()
-fuse f box = with box $ \(Box c e) -> fuse_ (maybeEmit f e) c
+fuse f box = with box $ \(Box c e) -> fuse_ (emap f e) c
 
 -- | fuse-branch an emitter
 forkEmit :: (Monad m) => Emitter m a -> Committer m a -> Emitter m a
@@ -86,8 +87,8 @@ fuseEmit e = Cont $ \eio -> queueE (fuseSTM_ e) eio
 --
 -- This differs from `liftA2 (<>)` in that the monoidal (and alternative) instance of an Emitter is left-biased (The left emitter exhausts before the right one is begun). This merge is concurrent.
 --
-mergeEmit :: Cont IO (Emitter STM a, Emitter STM a) -> Cont IO (Emitter STM a)
-mergeEmit e =
+emerge :: Cont IO (Emitter STM a, Emitter STM a) -> Cont IO (Emitter STM a)
+emerge e =
   Cont $ \eio ->
     with e $ \e' ->
       fst <$>
@@ -123,10 +124,10 @@ feedback :: (a -> IO (Maybe b)) -> Cont IO (Box IO b a) -> Cont IO (Box IO b a)
 feedback f box =
   Cont $ \bio ->
     with box $ \(Box c e) -> do
-      fuse_ (maybeEmit f e) c
+      fuse_ (emap f e) c
       bio (Box c e)
 
 -- | an emitter post-processor that cons transformed emissions back into the emitter
 feedbackE :: (a -> IO (Maybe a)) -> Emitter STM a -> Cont IO (Emitter STM a)
 feedbackE f e =
-  mergeEmit ((,) <$> pure e <*> fuseEmit (maybeEmit (safeIOToSTM . f) e))
+  emerge ((,) <$> pure e <*> fuseEmit (emap (safeIOToSTM . f) e))

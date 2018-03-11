@@ -25,17 +25,19 @@ library:
   exposed-modules:
   - Etc
   - Etc.Action
-  - Etc.Broadcast
   - Etc.Box
+  - Etc.Broadcast
+  - Etc.Committer
   - Etc.Connectors
   - Etc.Cont
   - Etc.Emitter
-  - Etc.Committer
+  - Etc.IO
+  - Etc.Plugs
+  - Etc.Queue
   - Etc.Stream
   - Etc.Time
   - Etc.Transducer
   - Etc.Updater
-  - Etc.IO
   dependencies:
   - async
   - attoparsec

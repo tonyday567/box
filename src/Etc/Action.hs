@@ -72,8 +72,12 @@ instance Default ActionConfig where
 
 consoleActionBox :: ActionBox
 consoleActionBox =
-  Box <$> (contramap show <$> (cStdout 1000 :: Cont IO (Committer STM Text))) <*>
-  eParse parseActionComms (eStdin 1000)
+  Box <$>
+  (contramap show <$>
+   (cStdout 1000 :: Cont IO (Committer STM Text))) <*>
+  (emap (pure . either (const Nothing) Just) <$>
+   (eParse parseActionComms <$>
+    eStdin 1000))
 
 parseActionComms :: A.Parser ActionComm
 parseActionComms =
