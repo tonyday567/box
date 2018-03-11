@@ -101,15 +101,15 @@ emerge e =
 -- not working
 --
 splitCommit ::
-     Cont IO (Committer IO a)
-  -> Cont IO (Either (Committer IO a) (Committer IO a))
+     Cont IO (Committer STM a)
+  -> Cont IO (Either (Committer STM a) (Committer STM a))
 splitCommit c =
   Cont $ \kk ->
     with c $ \c' ->
       fst <$>
       concurrently
-        (queueCIO (kk . Left) (`fuse_` c'))
-        (queueCIO (kk . Right) (`fuse_` c'))
+        (queueC (kk . Left) (`fuseSTM_` c'))
+        (queueC (kk . Right) (`fuseSTM_` c'))
 
 -- | a failed attempt to understand the either continuation style
 contCommit :: Either (Committer m Text) (Committer m Text) -> Committer m Text

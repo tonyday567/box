@@ -13,13 +13,10 @@
 --
 module Box.Queue
   ( Queue(..)
-  , withQ
   , queue
   , queueC
   , queueE
   , queueIO
-  , queueCIO
-  , queueEIO
   , waitCancel
   ) where
 
@@ -29,7 +26,6 @@ import Box.Emitter
 import GHC.Conc
 import Protolude hiding ((.), (<>))
 import qualified Control.Concurrent.STM as S
-import qualified Control.Exception
 
 -- | 'Queue' specifies how messages are queued
 data Queue a
@@ -64,19 +60,15 @@ ends buffer =
       return (write, S.readTBQueue q)
 
 -- | copied shamefully from pipes-concurrency
-spawn :: Queue a -> IO (Box STM a a, STM ())
-spawn buffer = do
-  (write, read) <- atomically $ ends buffer
+spawn :: Queue a -> IO (Box STM a a, IO ())
+spawn q = do
+  (write, read) <- atomically $ ends q
   sealed <- S.newTVarIO False
-  let seal = S.writeTVar sealed True
-    {- Use weak TVars to keep track of whether the 'Input' or 'Output' has been
-       garbage collected.  Seal the mailbox when either of them becomes garbage
-       collected.
-    -}
+  let seal = S.atomically $ S.writeTVar sealed True
   rSend <- S.newTVarIO ()
-  void $ S.mkWeakTVar rSend (S.atomically seal)
+  void $ S.mkWeakTVar rSend seal
   rRecv <- S.newTVarIO ()
-  void $ S.mkWeakTVar rRecv (S.atomically seal)
+  void $ S.mkWeakTVar rRecv seal
   let sendOrEnd a = do
         b <- S.readTVar sealed
         if b
@@ -93,8 +85,8 @@ spawn buffer = do
       _recv = readOrEnd <* S.readTVar rRecv
   return (Box (Committer _send) (Emitter _recv), seal)
 
-spawnIO :: Queue a -> IO (Box IO a a, STM ())
-spawnIO buffer = fmap (\(a, b) -> (liftB a, b)) (spawn buffer)
+spawnIO :: Queue a -> IO (Box IO a a, IO ())
+spawnIO q = fmap (\(a, b) -> (liftB a, b)) (spawn q)
 
 -- | wait for the first action, and then cancel the second
 waitCancel :: IO b -> IO a -> IO b
@@ -108,18 +100,18 @@ waitCancel a b =
 -- | connect a committer and emitter action via spawning a queue, and wait for both to complete.
 withQ ::
      Queue a
-  -> (Queue a -> IO (Box m a a, STM ()))
+  -> (Queue a -> IO (Box m a a, IO ()))
   -> (Committer m a -> IO l)
   -> (Emitter m a -> IO r)
   -> IO (l, r)
 withQ q spawner cio eio =
   bracket
     (spawner q)
-    (\(_, seal) -> atomically seal)
+    (\(_, seal) -> seal)
     (\(box, seal) ->
        concurrently
-         (cio (committer box) `Control.Exception.finally` atomically seal)
-         (eio (emitter box) `Control.Exception.finally` atomically seal))
+         (cio (committer box) `finally` seal)
+         (eio (emitter box) `finally` seal))
 
 queue :: (Committer STM a -> IO l) -> (Emitter STM a -> IO r) -> IO (l, r)
 queue = withQ Unbounded spawn
@@ -132,10 +124,3 @@ queueC cio eio = fst <$> withQ Unbounded spawn cio eio
 
 queueIO :: (Committer IO a -> IO l) -> (Emitter IO a -> IO r) -> IO (l, r)
 queueIO = withQ Unbounded spawnIO
-
-queueEIO :: (Committer IO a -> IO l) -> (Emitter IO a -> IO r) -> IO r
-queueEIO cio eio = snd <$> withQ Unbounded spawnIO cio eio
-
-queueCIO :: (Committer IO a -> IO l) -> (Emitter IO a -> IO r) -> IO l
-queueCIO cio eio = fst <$> withQ Unbounded spawnIO cio eio
-
