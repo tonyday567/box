@@ -22,6 +22,7 @@ module Box.Stream
 
 import Control.Category
 import Control.Monad.Base (MonadBase)
+
 import Box.Committer
 import Box.Cont
 import Box.Emitter

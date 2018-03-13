@@ -39,22 +39,25 @@ library:
     - Box.Transducer
     - Box.Updater
   dependencies:
-    - async
-    - attoparsec
-    - contravariant
-    - data-default
-    - flow
-    - foldl
-    - lens
-    - pipes
-    - profunctors
-    - protolude
-    - stm
-    - streaming 
-    - text
-    - time
-    - transformers
-    - transformers-base
+  - async
+  - attoparsec
+  - concurrency
+  - contravariant
+  - data-default
+  - dejafu
+  - exceptions
+  - flow
+  - foldl
+  - lens
+  - pipes
+  - profunctors
+  - protolude
+  - stm
+  - streaming 
+  - text
+  - time
+  - transformers
+  - transformers-base
 tests:
   test:
     main: test.hs

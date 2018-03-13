@@ -16,7 +16,6 @@ module Box.Queue
   , queue
   , queueC
   , queueE
-  , queueIO
   , waitCancel
   ) where
 
@@ -24,8 +23,11 @@ import Box.Box
 import Box.Committer
 import Box.Emitter
 import GHC.Conc
-import Protolude hiding ((.), (<>))
-import qualified Control.Concurrent.STM as S
+import Protolude hiding ((<>), STM, check, wait, cancel, atomically, withAsync, concurrently)
+import Control.Concurrent.Classy.STM as C
+import Control.Monad.Conc.Class as C hiding (spawn)
+import Control.Concurrent.Classy.Async as C
+import Control.Monad.Catch as C
 
 -- | 'Queue' specifies how messages are queued
 data Queue a
@@ -36,60 +38,58 @@ data Queue a
   | Newest Int
   | New
 
-ends :: Queue a -> STM (a -> STM (), STM a)
-ends buffer =
-  case buffer of
+ends :: MonadSTM stm => Queue a -> stm (a -> stm (), stm a)
+ends qu =
+  case qu of
     Bounded n -> do
-      q <- S.newTBQueue n
-      return (S.writeTBQueue q, S.readTBQueue q)
+      q <- newTBQueue n
+      return (writeTBQueue q, readTBQueue q)
     Unbounded -> do
-      q <- S.newTQueue
-      return (S.writeTQueue q, S.readTQueue q)
+      q <- newTQueue
+      return (writeTQueue q, readTQueue q)
     Single -> do
-      m <- S.newEmptyTMVar
-      return (S.putTMVar m, S.takeTMVar m)
+      m <- newEmptyTMVar
+      return (putTMVar m, takeTMVar m)
     Latest a -> do
-      t <- S.newTVar a
-      return (S.writeTVar t, S.readTVar t)
+      t <- newTVar a
+      return (writeTVar t, readTVar t)
     New -> do
-      m <- S.newEmptyTMVar
-      return (\x -> S.tryTakeTMVar m *> S.putTMVar m x, S.takeTMVar m)
+      m <- newEmptyTMVar
+      return (\x -> tryTakeTMVar m *> putTMVar m x, takeTMVar m)
     Newest n -> do
-      q <- S.newTBQueue n
-      let write x = S.writeTBQueue q x <|> (S.tryReadTBQueue q *> write x)
-      return (write, S.readTBQueue q)
+      q <- newTBQueue n
+      let write x = writeTBQueue q x <|> (tryReadTBQueue q *> write x)
+      return (write, readTBQueue q)
+
+writeCheck :: (MonadSTM stm) => TVar stm Bool -> (a -> stm ()) -> a -> stm Bool
+writeCheck sealed i a = do
+  b <- readTVar sealed
+  if b
+    then pure False
+    else do
+      i a
+      pure True
+
+readCheck :: MonadSTM stm => TVar stm Bool -> stm a -> stm (Maybe a)
+readCheck sealed o = (Just <$> o) <|> (do
+  b <- readTVar sealed
+  C.check b
+  pure Nothing)
 
 -- | copied shamefully from pipes-concurrency
-spawn :: Queue a -> IO (Box STM a a, IO ())
-spawn q = do
-  (write, read) <- atomically $ ends q
-  sealed <- S.newTVarIO False
-  let seal = S.atomically $ S.writeTVar sealed True
-  rSend <- S.newTVarIO ()
-  void $ S.mkWeakTVar rSend seal
-  rRecv <- S.newTVarIO ()
-  void $ S.mkWeakTVar rRecv seal
-  let sendOrEnd a = do
-        b <- S.readTVar sealed
-        if b
-          then return False
-          else do
-            write a
-            return True
-      readOrEnd =
-        (Just <$> read) <|>
-        (do b <- S.readTVar sealed
-            S.check b
-            return Nothing)
-      _send a = sendOrEnd a <* S.readTVar rSend
-      _recv = readOrEnd <* S.readTVar rRecv
-  return (Box (Committer _send) (Emitter _recv), seal)
-
-spawnIO :: Queue a -> IO (Box IO a a, IO ())
-spawnIO q = fmap (\(a, b) -> (liftB a, b)) (spawn q)
+toBox :: (MonadSTM stm) =>
+  Queue a -> stm (Box stm a a, stm ())
+toBox q = do
+  (i, o) <- ends q
+  sealed <- newTVarN "sealed" False
+  let seal = writeTVar sealed True
+  pure (Box
+        (Committer (writeCheck sealed i))
+        (Emitter (readCheck sealed o)),
+        seal)
 
 -- | wait for the first action, and then cancel the second
-waitCancel :: IO b -> IO a -> IO b
+waitCancel :: (MonadConc m) => m b -> m a -> m b
 waitCancel a b =
   withAsync a $ \a' ->
     withAsync b $ \b' -> do
@@ -98,29 +98,38 @@ waitCancel a b =
       pure a''
 
 -- | connect a committer and emitter action via spawning a queue, and wait for both to complete.
-withQ ::
+withQ :: (MonadConc m) =>
      Queue a
-  -> (Queue a -> IO (Box m a a, IO ()))
-  -> (Committer m a -> IO l)
-  -> (Emitter m a -> IO r)
-  -> IO (l, r)
+  -> (Queue a -> (STM m) (Box (STM m) a a, (STM m) ()))
+  -> (Committer (STM m) a -> m l)
+  -> (Emitter (STM m) a -> m r)
+  -> m (l, r)
 withQ q spawner cio eio =
-  bracket
-    (spawner q)
-    (\(_, seal) -> seal)
+  C.bracket
+    (atomically $ spawner q)
+    (\(_, seal) -> atomically seal)
     (\(box, seal) ->
        concurrently
-         (cio (committer box) `finally` seal)
-         (eio (emitter box) `finally` seal))
+         (cio (committer box) `C.finally` atomically seal)
+         (eio (emitter box) `C.finally` atomically seal))
 
-queue :: (Committer STM a -> IO l) -> (Emitter STM a -> IO r) -> IO (l, r)
-queue = withQ Unbounded spawn
+queue ::
+  (MonadConc m) =>
+  (Committer (STM m) a -> m l) ->
+  (Emitter (STM m) a -> m r) ->
+  m (l, r)
+queue = withQ Unbounded toBox
 
-queueE :: (Committer STM a -> IO l) -> (Emitter STM a -> IO r) -> IO r
-queueE cio eio = snd <$> withQ Unbounded spawn cio eio
+queueE ::
+  (MonadConc m) =>
+  (Committer (STM m) a -> m l) ->
+  (Emitter (STM m) a -> m r) ->
+  m r
+queueE cm em = snd <$> withQ Unbounded toBox cm em
 
-queueC :: (Committer STM a -> IO l) -> (Emitter STM a -> IO r) -> IO l
-queueC cio eio = fst <$> withQ Unbounded spawn cio eio
-
-queueIO :: (Committer IO a -> IO l) -> (Emitter IO a -> IO r) -> IO (l, r)
-queueIO = withQ Unbounded spawnIO
+queueC ::
+  (MonadConc m) =>
+  (Committer (STM m) a -> m l) ->
+  (Emitter (STM m) a -> m r) ->
+  m l
+queueC cm em = fst <$> withQ Unbounded toBox cm em
