@@ -23,9 +23,9 @@ module Box.IO
   , consolePlug
   , emitLines
   , commitLines
-  , cIORef
-  , cIORefM
-  , toListIO
+  , cCRef
+  , cCRefM
+  , toListM
   , getCommissions
   , getEmissions
   ) where
@@ -33,7 +33,6 @@ module Box.IO
 import Control.Category
 import qualified Control.Foldl as L
 import Control.Lens hiding ((:>), (.>), (<|), (|>))
-import Data.IORef
 import Data.Semigroup hiding (First, getFirst)
 import qualified Data.Text.IO as Text
 import Box.Box
@@ -48,6 +47,8 @@ import Protolude hiding ((.), (<>))
 import Streaming (Of(..), Stream)
 import qualified Streaming.Internal as S
 import qualified Streaming.Prelude as S
+import qualified Control.Monad.Conc.Class as C
+import qualified Control.Concurrent.Classy.CRef as C
 
 -- * console
 -- | a single stdin committer action
@@ -127,30 +128,36 @@ commitLines filePath =
               liftIO (Text.hPutStrLn h s)
               loop rest
 
--- * iorefs
--- | commit to a list IORef
-cIORef :: IORef [b] -> Cont IO (Committer STM b)
-cIORef ref =
-  toCommitFold $
-  L.FoldM (\x a -> modifyIORef x (a :) >> pure x) (pure ref) (const $ pure ())
+-- * concurrent refs
+-- | commit to a list CRef
+cCRef :: (C.MonadConc m) => m (C.CRef m [b], Cont m (Committer (C.STM m) b), m [b])
+cCRef = do
+  ref <- C.newCRef []
+  let c = toCommitFold $
+        L.FoldM (\x a -> C.modifyCRef x (a :) >> pure x) (pure ref) (const $ pure ())
+  let res = reverse <$> C.readCRef ref
+  pure (ref, c, res)
 
--- | commit to a monoidal IORef
-cIORefM :: Semigroup a => IORef a -> Cont IO (Committer STM a)
-cIORefM ref =
-  toCommitFold $
-  L.FoldM (\x a -> modifyIORef x (a <>) >> pure x) (pure ref) (const $ pure ())
+-- | commit to a monoidal CRef
+cCRefM :: (C.MonadConc m, Monoid a, Semigroup a) => m (C.CRef m a, Cont m (Committer (C.STM m) a), m a)
+cCRefM = do
+  ref <- C.newCRef mempty
+  let c = toCommitFold $
+        L.FoldM (\x a -> C.modifyCRef x (a <>) >> pure x) (pure ref) (const $ pure ())
+  let res = C.readCRef ref
+  pure (ref, c, res)
 
 -- | fold an emitter through a transduction, committing to a list
-toListIO :: Cont IO (Emitter STM a) -> s -> Transducer s a b -> IO ([b], s)
-toListIO e s t = do
-  ref <- newIORef []
-  r <- etc s t (Box <$> cIORef ref <*> e)
-  (,) <$> readIORef ref <*> pure r
+toListM :: (C.MonadConc m) => Cont m (Emitter (C.STM m) a) -> s -> Transducer s a b -> m ([b], s)
+toListM e s t = do
+  (_, c, res) <- cCRef
+  r <- etc s t (Box <$> c <*> e)
+  (,) <$> res <*> pure r
 
 -- | get all commissions as a list
-getCommissions :: Cont IO (Emitter STM a) -> s -> Transducer s a b -> IO [b]
-getCommissions e s t = fst <$> toListIO e s t
+getCommissions :: (C.MonadConc m) => Cont m (Emitter (C.STM m) a) -> s -> Transducer s a b -> m [b]
+getCommissions e s t = fst <$> toListM e s t
 
 -- | get all emissions
-getEmissions :: Int -> Cont IO (Emitter STM a) -> IO [a]
-getEmissions n e = fst <$> toListIO e () (Transducer $ S.take n)
+getEmissions :: (C.MonadConc m) => Int -> Cont m (Emitter (C.STM m) a) -> m [a]
+getEmissions n e = fst <$> toListM e () (Transducer $ S.take n)

@@ -6,30 +6,28 @@
 
 module Box.Cont
   ( Cont(..)
-  , with
   ) where
 
 import Control.Applicative
 import Control.Monad.IO.Class (MonadIO(liftIO))
 import Data.Monoid (Monoid(..))
-
 import Data.Semigroup (Semigroup(..))
 
--- | A continuation
+-- | A continuation similar to `ContT` but where the result type is swallowed by an existential
 newtype Cont m a = Cont
-  { (>>-) :: forall r. (a -> m r) -> m r
+  { with :: forall r. (a -> m r) -> m r
   }
 
 instance Functor (Cont m) where
-  fmap f mx = Cont (\return_ -> mx >>- \x -> return_ (f x))
+  fmap f mx = Cont (\return_ -> mx `with` \x -> return_ (f x))
 
 instance Applicative (Cont m) where
   pure r = Cont (\return_ -> return_ r)
-  mf <*> mx = Cont (\return_ -> mf >>- \f -> mx >>- \x -> return_ (f x))
+  mf <*> mx = Cont (\return_ -> mf `with` \f -> mx `with` \x -> return_ (f x))
 
 instance Monad (Cont m) where
   return r = Cont (\return_ -> return_ r)
-  ma >>= f = Cont (\return_ -> ma >>- \a -> f a >>- \b -> return_ b)
+  ma >>= f = Cont (\return_ -> ma `with` \a -> f a `with` \b -> return_ b)
 
 instance (MonadIO m) => MonadIO (Cont m) where
   liftIO m =
@@ -44,6 +42,3 @@ instance (Semigroup a) => Semigroup (Cont m a) where
 instance (Functor m, Semigroup a, Monoid a) => Monoid (Cont m a) where
   mempty = pure mempty
   mappend = (<>)
-
-with :: Cont m a -> (a -> m r) -> m r
-with = (>>-)

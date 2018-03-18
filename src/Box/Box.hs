@@ -13,11 +13,9 @@
 module Box.Box
   ( Box(..)
   , liftB
-  , safeIOToSTM
+  , bmap
   ) where
 
-import Control.Category
-import qualified Control.Exception
 import Control.Lens hiding ((:>), (.>), (<|), (|>))
 import Data.Semigroup hiding (First, getFirst)
 import Box.Committer
@@ -45,19 +43,13 @@ instance (Alternative m, Monad m) => Monoid (Box m c e) where
   mempty = Box mempty mempty
   mappend = (<>)
 
--- | lift a box from STM to IO
-liftB :: Box STM a b -> Box IO a b
+-- | lift a box from STM
+liftB :: (MonadConc m) => Box (STM m) a b -> Box m a b
 liftB (Box c e) = Box (liftC c) (liftE e)
 
-safeIOToSTM :: IO a -> STM a
-safeIOToSTM req =
-  unsafeIOToSTM $ do
-    tv <- newEmptyMVar
-    _ <-
-      forkIO $
-      ((putMVar tv . Right) =<< req) `Control.Exception.catch`
-      (\(e :: SomeException) -> putMVar tv $ Left e)
-    r <- takeMVar tv
-    case r of
-      Right x -> return x
-      Left e -> Control.Exception.throw e
+-- | a profunctor dimapMaybe
+bmap :: (Monad m) => (a' -> m (Maybe a)) -> (b -> m (Maybe b')) -> Box m a b -> Box m a' b'
+bmap fc fe (Box c e) = Box (cmap fc c) (emap fe e)
+
+
+

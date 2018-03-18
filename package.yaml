@@ -48,10 +48,14 @@ library:
   - exceptions
   - flow
   - foldl
+  - generic-lens-labels
+  - generic-lens
   - lens
+  - mmorph
   - pipes
   - profunctors
   - protolude
+  - random
   - stm
   - streaming 
   - text
@@ -63,6 +67,30 @@ tests:
     main: test.hs
     source-dirs: test
     dependencies:
+      - etc
+      - async
+      - attoparsec
+      - concurrency
+      - contravariant
+      - data-default
+      - dejafu
+      - exceptions
+      - flow
+      - foldl
+      - generic-lens
+      - generic-lens-labels
+      - lens
+      - mmorph
+      - pipes
+      - profunctors
+      - protolude
+      - random
+      - stm
+      - streaming 
+      - text
+      - time
+      - transformers
+      - transformers-base
       - doctest
       - protolude
     ghc-options:

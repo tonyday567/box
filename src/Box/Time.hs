@@ -18,7 +18,6 @@ module Box.Time
   ) where
 
 import Control.Applicative
-import Control.Concurrent (threadDelay)
 import Control.Monad
 import Data.Maybe
 import Data.Time
@@ -27,30 +26,27 @@ import Box.Emitter
 import Box.Stream
 import Protolude
 import qualified Streaming.Prelude as S
-import System.IO.Unsafe
+import qualified Streaming as S
+import Control.Monad.Conc.Class as C
 
 -- | sleep for x seconds
-sleep :: Double -> IO ()
+sleep :: (MonadConc m) => Double -> m ()
 sleep x = threadDelay (floor $ x * 1e6)
 
 -- | keeping a box open sometimes needs a long running emitter
-keepOpen :: Cont IO (Emitter STM a)
+keepOpen :: (MonadConc m) => Cont m (Emitter (STM m) a)
 keepOpen = toEmit $ lift $ threadDelay (365 * 24 * 60 * 60 * 10 ^ 6)
 
 -- | a stream with suggested delays.  DiffTime is the length of time to wait since the start of the stream
 -- > delayTimed (S.each (zip (fromIntegral <$> [1..10]) [1..10])) |> S.print
-delayTimed ::
-     S.Stream (S.Of (NominalDiffTime, a)) IO () -> S.Stream (S.Of a) IO ()
+delayTimed :: (MonadConc m, MonadIO m) =>
+     S.Stream (S.Of (NominalDiffTime, a)) m () -> S.Stream (S.Of a) m ()
 delayTimed s = do
-  t0 <- lift getCurrentTime
-  go s t0
+  t0 <- liftIO getCurrentTime
+  go (S.hoistUnexposed lift s) t0
   where
-    go ::
-         S.Stream (S.Of (NominalDiffTime, a)) IO ()
-      -> UTCTime
-      -> S.Stream (S.Of a) IO ()
     go s t0 = do
-      n <- liftIO $ S.uncons s
+      n <- S.uncons s
       case n of
         Nothing -> pure ()
         Just ((t1, a'), s') -> do
@@ -58,24 +54,27 @@ delayTimed s = do
           S.yield a'
           go s' t0
     delayTo t = do
-      now <- getCurrentTime
+      now <- liftIO getCurrentTime
       let gap = max 0 $ diffUTCTime t now
-      liftIO (threadDelay (truncate (gap * 1000000)))
+      -- sleep gap
+      threadDelay (truncate (gap * 1000000))
 
 data Stamped a = Stamped
   { timestamp :: UTCTime
   , value :: a
   } deriving (Eq, Show, Read)
 
-stampNow :: a -> IO (Stamped a)
+stampNow :: (MonadConc m, MonadIO m) => a -> m (Stamped a)
 stampNow a = do
-  t <- getCurrentTime
+  t <- liftIO getCurrentTime
   pure $ Stamped t a
 
 -- | adding a time stamp
 -- todo: how to do this properly?
-emitStamp :: Cont IO (Emitter STM a) -> Cont IO (Emitter STM (Stamped a))
-emitStamp e = fmap (unsafePerformIO . stampNow) <$> e
--- | todo: is this possible?
--- commitStamp :: Managed (Committer a) -> Managed (Committer (Stamped a))
--- commitStamp c = managed $ \cio -> with c $ \c -> undefined
+emitStamp ::
+  (MonadConc m, MonadIO m) =>
+  Cont m (Emitter m a) ->
+  Cont m (Emitter m (Stamped a))
+emitStamp e = emap (fmap Just . stampNow) <$> e
+
+

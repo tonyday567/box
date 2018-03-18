@@ -1,3 +1,4 @@
+{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -11,8 +12,8 @@
 -- | `emit`
 module Box.Emitter
   ( Emitter(..)
-  , emap
   , liftE
+  , emap
   , keeps
   , eRead
   , eParse
@@ -21,9 +22,10 @@ module Box.Emitter
 import Control.Category ((.))
 import Data.Functor.Constant
 import Data.Semigroup hiding (First, getFirst)
-import Protolude hiding ((.), (<>))
+import Protolude hiding ((.), (<>), STM, atomically)
 import qualified Data.Attoparsec.Text as A
 import qualified Data.Text as Text
+import Control.Monad.Conc.Class as C
 
 -- | an `Emitter` "emits" values of type a. A Source & a Producer (of 'a's) are the two other alternative but overloaded metaphors out there.
 --
@@ -56,7 +58,7 @@ instance (Monad m, Alternative m) => Alternative (Emitter m) where
       (i, ma) <- fmap ((,) y) (emit x) <|> fmap ((,) x) (emit y)
       case ma of
         Nothing -> emit i
-        Just a -> return (Just a)
+        Just a -> pure (Just a)
 
 instance (Alternative m, Monad m) => MonadPlus (Emitter m) where
   mzero = empty
@@ -69,8 +71,7 @@ instance (Alternative m, Monad m) => Monoid (Emitter m a) where
   mempty = empty
   mappend = (<>)
 
--- | lift an emitter from STM to IO
-liftE :: Emitter STM a -> Emitter IO a
+liftE :: (MonadConc m) => Emitter (STM m) a -> Emitter m a
 liftE = Emitter . atomically . emit
 
 -- | like a monadic mapMaybe. (See [witherable](https://hackage.haskell.org/package/witherable))
@@ -109,14 +110,14 @@ keeps k (Emitter emit_) = Emitter emit_'
     match = getFirst . getConstant . k (Constant . First . Just)
 
 -- | attoparsec parse emitter
-eParse :: A.Parser a -> Emitter STM Text -> Emitter STM (Either Text a)
+eParse :: (Functor m) => A.Parser a -> Emitter m Text -> Emitter m (Either Text a)
 eParse parser e = (either (Left . Text.pack) Right . A.parseOnly parser) <$> e
 
 -- | read parse emitter
 eRead ::
-     (Read a)
-  => Emitter STM Text
-  -> Emitter STM (Either Text a)
+     (Functor m, Read a)
+  => Emitter m Text
+  -> Emitter m (Either Text a)
 eRead = fmap $ parsed . Text.unpack
   where
     parsed str =

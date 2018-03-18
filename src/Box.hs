@@ -44,9 +44,11 @@ import Box.Transducer
 
 -- $setup
 -- >>> :set -XOverloadedStrings
+-- >>> :set -XGADTs
 -- >>> import Protolude
 -- >>> import Box
 -- >>> import qualified Streaming.Prelude as S
+-- >>> import Control.Monad.Conc.Class as C
 -- >>> let committer' = cStdout 100
 -- >>> let emitter' = toEmit (S.each ["hi","bye","q","x"])
 -- >>> let box' = Box <$> committer' <*> emitter'
@@ -55,7 +57,7 @@ import Box.Transducer
 -- $commit
 -- committing
 --
--- >>> with (cStdout 100) $ \c -> atomically (commit c "something")
+-- >>> with (cStdout 100) $ \c -> C.atomically (commit c "something")
 -- something
 -- True
 --
@@ -91,9 +93,16 @@ import Box.Transducer
 -- x_right
 --
 
+-- | splitCommit
+-- 
+-- >>> cs <- splitCommit (cStdout 100)
+-- >>> let c2 = contCommit <$> cs
+-- >>> (etcM () transducer' $ (Box <$> c2 <*> (liftE <$> emitter'))) >> sleep 1
+--
+
 -- $emit
 --
--- >>> with (S.each [0..] & toEmit) (atomically . emit) >>= print
+-- >>> with (S.each [0..] & toEmit) (C.atomically . emit) >>= print
 -- Just 0
 --
 -- >>> let c = fmap liftC $ cStdout 10
@@ -105,8 +114,8 @@ import Box.Transducer
 -- stole a q!
 -- x
 --
--- >>> let e1 = fmap show <$> (toEmit $ delayTimed (S.each (zip (fromIntegral <$> [1..10]) ['a'..]))) :: Cont IO (Emitter STM Text)
--- >>> let e2 = fmap show <$> (toEmit $ delayTimed (S.each (zip ((\x -> fromIntegral x + 0.1) <$> [1..10]) (reverse ['a'..'z'])))) :: Cont IO (Emitter STM Text)
+-- >>> let e1 = fmap show <$> (toEmit $ delayTimed (S.each (zip (fromIntegral <$> [1..10]) ['a'..]))) :: Cont IO (Emitter (C.STM IO) Text)
+-- >>> let e2 = fmap show <$> (toEmit $ delayTimed (S.each (zip ((\x -> fromIntegral x + 0.1) <$> [1..10]) (reverse ['a'..'z'])))) :: Cont IO (Emitter (C.STM IO) Text)
 -- >>> let e12 = e1 <> e2
 -- >>> etc () (Transducer identity) $ Box <$> cStdout 6 <*> emerge ((,) <$> e1 <*> e2)
 -- 'a'
@@ -131,4 +140,10 @@ import Box.Transducer
 -- echo: hi
 -- echo: bye
 --
+
+-- | broadcasting
+--
+-- > (bcast, bcom) <- C.atomically broadcast
+-- > (funn, fem) <- C.atomically funnel
+-- >
 

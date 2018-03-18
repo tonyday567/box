@@ -17,36 +17,42 @@ import Box.Emitter
 import Box.Queue
 import Protolude
 
+-- | a broadcaster 
 newtype Broadcaster m a = Broadcaster
-  { unBroadcast :: TVar (Committer m a)
+  { unBroadcast :: TVar m (Committer m a)
   }
 
-broadcast :: IO (Committer STM a, Broadcaster STM a)
+-- | create a (broadcaster, committer)
+broadcast :: (MonadSTM stm) => stm (Broadcaster stm a, Committer stm a)
 broadcast = do
-  tvar <- atomically $ newTVar mempty
-  let output a = do
-        o <- readTVar tvar
-        commit o a
-  return (Committer output, Broadcaster tvar)
+  ref <- newTVar mempty
+  let com = Committer $ \a -> do
+        c <- readTVar ref
+        commit c a
+  return (Broadcaster ref, com)
 
-subscribe :: Broadcaster STM a -> Cont IO (Emitter STM a)
+-- | subscribe to a broadcaster
+subscribe :: (MonadConc m) => Broadcaster (STM m) a -> Cont m (Emitter (STM m) a)
 subscribe (Broadcaster tvar) = Cont $ \e -> queueE cio e
   where
     cio c = atomically $ modifyTVar' tvar (mappend c)
 
+-- | a funneler
 newtype Funneler m a = Funneler
-  { unFunnel :: TVar (Emitter m a)
+  { unFunnel :: TVar m (Emitter m a)
   }
 
-funnel :: STM (Funneler STM a, Emitter STM a)
+-- | create a (funneler, emitter)
+funnel :: (MonadSTM stm) => stm (Funneler stm a, Emitter stm a)
 funnel = do
-  tvar <- newTVar mempty
-  let input =
+  ref <- newTVar mempty
+  let em =
         Emitter $ do
-          i <- readTVar tvar
-          emit i
-  pure (Funneler tvar, input)
+          e <- readTVar ref
+          emit e
+  pure (Funneler ref, em)
 
-widen :: Funneler STM a -> Cont IO (Committer STM a)
+-- | widen to a funneler
+widen :: (MonadConc m) => Funneler (STM m) a -> Cont m (Committer (STM m) a)
 widen (Funneler tvar) =
   Cont $ \c -> queueC c $ \e -> atomically $ modifyTVar' tvar (mappend e)

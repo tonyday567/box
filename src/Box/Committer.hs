@@ -1,3 +1,4 @@
+{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -20,7 +21,8 @@ import Control.Lens hiding ((:>), (.>), (<|), (|>))
 import Data.Functor.Constant
 import Data.Functor.Contravariant.Divisible
 import Data.Semigroup hiding (First, getFirst)
-import Protolude hiding ((.), (<>))
+import Protolude hiding ((.), (<>), STM, atomically)
+import Control.Monad.Conc.Class as C
 
 -- | a Committer a "commits" values of type a. A Sink and a Consumer are some other metaphors for this.
 --
@@ -55,8 +57,8 @@ instance (Applicative m) => Decidable (Committer m) where
         Left b -> commit i1 b
         Right c -> commit i2 c
 
--- | lift a committer from STM to IO
-liftC :: Committer STM a -> Committer IO a
+-- | lift a committer from STM
+liftC :: (MonadConc m) => Committer (STM m) a -> Committer m a
 liftC c = Committer $ atomically . commit c
 
 -- | This is a contramapMaybe, if such a thing existed, as the contravariant version of a `mapMaybe`.  See [witherable](https://hackage.haskell.org/package/witherable)

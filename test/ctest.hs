@@ -5,220 +5,352 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE OverloadedLabels #-}
 {-# OPTIONS_GHC -Wall #-}
 {-# OPTIONS_GHC -fno-warn-type-defaults #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DataKinds #-}
 
--- | queues
--- Roughly follows [pipes-concurrency](https://hackage.haskell.org/package/pipes-concurrency)
+-- | dejavu testing
 --
 module Main where
 
+import Control.Category (id)
+import Control.Monad.Conc.Class as C
+import Control.Concurrent.Classy.STM as C
 import Etc.Box
 import Etc.Committer
 import Etc.Emitter
-import Prelude
-import Control.Applicative
-import Control.Concurrent.Classy.STM as C
-import Control.Monad.Conc.Class as C hiding (spawn)
-import Control.Concurrent.Classy.Async as C
-import Control.Monad.Catch as C
-import Streaming (Of(..), Stream)
-import qualified Control.Foldl as L
-import qualified Streaming.Prelude as S
+import Etc.Broadcast
+import Etc.Connectors
 import Etc.Cont
-import Control.Monad
-import Control.Concurrent.Classy.CRef
-import Data.Text
+import Etc.IO
+import Etc.Queue
+import Etc.Stream
+import Etc.Transducer
+import Protolude hiding (STM)
 import Test.DejaFu
+import qualified Streaming.Prelude as S
+import System.Random
+import Control.Lens hiding ((:>), (.>), (<|), (|>))
+import Control.Concurrent.Classy.Async as C
+import qualified Control.Monad.Trans.State as Trans
+import Data.Generics.Labels ()
+import Data.Generics.Product
 
--- | 'Queue' specifies how messages are queued
-data Queue a
-  = Unbounded
-  | Bounded Int
-  | Single
-  | Latest a
-  | Newest Int
-  | New
+exBox :: (MonadConc m) => m (Cont m (Box (STM m) Int Int), m [Int])
+exBox = do
+  (_, c, res) <- cCRef
+  let e = toEmit (S.take 3 $ S.each [0..])
+  pure (Box <$> c <*> e, res)
 
-ends :: MonadSTM stm => Queue a -> stm (a -> stm (), stm a)
-ends qu =
-  case qu of
-    Bounded n -> do
-      q <- newTBQueue n
-      return (writeTBQueue q, readTBQueue q)
-    Unbounded -> do
-      q <- newTQueue
-      return (writeTQueue q, readTQueue q)
-    Single -> do
-      m <- newEmptyTMVar
-      return (putTMVar m, takeTMVar m)
-    Latest a -> do
-      t <- newTVar a
-      return (writeTVar t, readTVar t)
-    New -> do
-      m <- newEmptyTMVar
-      return (\x -> tryTakeTMVar m *> putTMVar m x, takeTMVar m)
-    Newest n -> do
-      q <- newTBQueue n
-      let write x = writeTBQueue q x <|> (tryReadTBQueue q *> write x)
-      return (write, readTBQueue q)
-
-writeCheck :: (MonadSTM stm) => TVar stm Bool -> (a -> stm ()) -> a -> stm Bool
-writeCheck sealed i a = do
-  b <- readTVar sealed
-  if b
-    then pure False
-    else do
-      i a
-      pure True
-
-readCheck :: MonadSTM stm => TVar stm Bool -> stm a -> stm (Maybe a)
-readCheck sealed o = (Just <$> o) <|> (do
-  b <- readTVar sealed
-  C.check b
-  pure Nothing)
-
--- | copied shamefully from pipes-concurrency
-toBox :: (MonadSTM stm) =>
-  Queue a -> stm (Box stm a a, stm ())
-toBox q = do
-  (i, o) <- ends q
-  sealed <- newTVarN "sealed" False
-  let seal = writeTVar sealed True
-  pure (Box
-        (Committer (writeCheck sealed i))
-        (Emitter (readCheck sealed o)),
-        seal)
-
--- | wait for the first action, and then cancel the second
-waitCancel :: (MonadConc m) => m b -> m a -> m b
-waitCancel a b =
-  withAsync a $ \a' ->
-    withAsync b $ \b' -> do
-      a'' <- wait a'
-      cancel b'
-      pure a''
-
--- | connect a committer and emitter action via a queue, and wait for both to complete.
-withQ :: (MonadConc m) =>
-     Queue a
-  -> (Queue a -> (STM m) (Box (STM m) a a, (STM m) ()))
-  -> (Committer (STM m) a -> m l)
-  -> (Emitter (STM m) a -> m r)
-  -> m (l, r)
-withQ q spawner cio eio =
-  bracket
-    (atomically $ spawner q)
-    (\(_, seal) -> atomically seal)
-    (\(box, seal) ->
-       concurrently
-         (cio (committer box) `finally` atomically seal)
-         (eio (emitter box) `finally` atomically seal))
-
-queue ::
-  (MonadConc m) =>
-  (Committer (STM m) a -> m l) ->
-  (Emitter (STM m) a -> m r) ->
-  m (l, r)
-queue = withQ Unbounded toBox
-
-queueE ::
-  (MonadConc m) =>
-  (Committer (STM m) a -> m l) ->
-  (Emitter (STM m) a -> m r) ->
-  m r
-queueE cm em = snd <$> withQ Unbounded toBox cm em
-
-queueC ::
-  (MonadConc m) =>
-  (Committer (STM m) a -> m l) ->
-  (Emitter (STM m) a -> m r) ->
-  m l
-queueC cm em = fst <$> withQ Unbounded toBox cm em
-
-ex1 :: (MonadConc m) => m [Text]
+ex1 :: (MonadConc m) => m [Int]
 ex1 = do
-  ref <- newCRef []
-  let c = fmap liftC' $ cCRef ref
-  let e = fmap liftE' $ toEmit (S.take 3 $ S.map (pack . show) $ S.each [0..])
-  fuse (pure . pure) $ Box <$> c <*> e
-  Prelude.reverse <$> readCRef ref
+  (b, res) <- exBox
+  fuse (pure . pure) (liftB <$> b)
+  res
 
-ex2 :: (MonadConc m) => m [Text]
+ex2 :: (MonadConc m) => m [Int]
 ex2 = do
-  ref <- newCRef []
-  let c = cCRef ref
-  let e = toEmit (S.take 3 $ S.map (pack . show) $ S.each [0..])
-  fuse' (pure . pure) $ Box <$> c <*> e
-  Prelude.reverse <$> readCRef ref
+  (b, res) <- exBox
+  fuseSTM (pure . pure) b
+  res
 
-toCommit :: (MonadConc m) => (Stream (Of a) m () -> m r) -> Cont m (Committer (STM m) a)
-toCommit f =
-  Cont (\c -> queueC c (\(Emitter o) -> f . toStreamM . Emitter $ o))
+ex3 :: (MonadConc m) => m [Int]
+ex3 = do
+  (b, res) <- exBox
+  etc () (Transducer id) b
+  res
 
--- | create a committer from a fold
-toCommitFold :: (MonadConc m) => L.FoldM m a () -> Cont m (Committer (STM m) a)
-toCommitFold f = toCommit (fmap S.snd' . L.impurely S.foldM f)
+exb :: (MonadConc m) => Int -> m ([Int],[Int])
+exb n = do
+  -- (b, c) <- C.atomically broadcast
+  -- let e = eStdin 4
+  let e = toEmit (S.take n $ S.each [0..])
+  (_,c1,r1) <- cCRef
+  (_,c2,r2) <- cCRef
+  fuseSTM (pure . pure) (Box <$> (c1) <*> e)
+  fuseSTM (pure . pure) (Box <$> (c2) <*> e)
+  (,) <$> r1 <*> r2
 
--- | commit to a list IORef
-cCRef :: (MonadConc m) => CRef m [b] -> Cont m (Committer (STM m) b)
-cCRef ref =
-  toCommitFold $
-  L.FoldM (\x a -> modifyCRef x (a :) >> pure x) (pure ref) (const $ pure ())
+exb' :: (MonadConc m) => Int -> m ([Int],[Int])
+exb' n = do
+  (b, c) <- C.atomically broadcast
+  let e1 = subscribe b
+  let e2 = subscribe b
+  let e = toEmit (S.take n $ S.each [0..])
+  fuseSTM (pure . pure) (Box <$> pure c <*> e)
+  -- let e = toEmit (S.take n $ S.each [0..])
+  (_,c1,r1) <- cCRef
+  (_,c2,r2) <- cCRef
+  fuseSTM (pure . pure) (Box <$> (c1) <*> e1)
+  fuseSTM (pure . pure) (Box <$> (c2) <*> e2)
+  (,) <$> r1 <*> r2
 
--- | create an emitter from a stream
-toEmit :: (MonadConc m) => Stream (Of a) m () -> Cont m (Emitter (STM m) a)
-toEmit s = Cont (queueE (fromStreamM s))
+exbIO :: Int -> IO ([Text],[Text])
+exbIO n = do
+  (b, c) <- C.atomically broadcast
+  let e1 = subscribe b
+  let e2 = subscribe b
+  let e = eStdin n
+  fuseSTM (pure . pure) (Box <$> pure c <*> e)
+  -- let e = toEmit (S.take n $ S.each [0..])
+  (_,c1,r1) <- cCRef
+  (_,c2,r2) <- cCRef
+  fuseSTM (pure . pure) (Box <$> (c1) <*> e1)
+  fuseSTM (pure . pure) (Box <$> (c2) <*> e2)
+  (,) <$> r1 <*> r2
 
-liftC' :: (MonadConc m) => Committer (STM m) a -> Committer m a
-liftC' c = Committer $ atomically . commit c
+exc :: (MonadConc m) => Int -> m ([Int],[Int])
+exc n = do
+  -- (b, c) <- C.atomically broadcast
+  -- let e = eStdin 4
+  ref <- newCRef 0
+  let e = Emitter $ do
+        a <- readCRef ref
+        if a < n
+          then do
+            writeCRef ref (a+1)
+            pure (Just a)
+          else (pure Nothing)
+  (_,c1,r1) <- cCRef
+  (_,c2,r2) <- cCRef
+  fuse (pure . pure) (Box <$> (liftC <$> c1) <*> pure (e))
+  fuse (pure . pure) (Box <$> (liftC <$> c2) <*> pure (e))
+  (,) <$> r1 <*> r2
 
-liftE' :: (MonadConc m) => Emitter (STM m) a -> Emitter m a
-liftE' = Emitter . atomically . emit
+eCounter :: (C.MonadConc m) => Int -> Int -> m (Emitter m Int, CRef m Int)
+eCounter start n = do
+  ref <- newCRef start
+  pure $ (
+    Emitter $ do
+        a <- readCRef ref
+        if a < n
+          then do
+          writeCRef ref (a+1)
+          pure (Just a)
+        else (pure Nothing), ref)
 
--- | turn an emitter into a stream
-toStreamM :: (MonadConc m) => Emitter (STM m) a -> Stream (Of a) m ()
-toStreamM e = S.untilRight getNext
+eCounter' :: (C.MonadConc m) => Int -> Int -> m (Cont m (Emitter m Int), CRef m Int)
+eCounter' start n = do
+  ref <- newCRef start
+  pure $ ( fuseEmitM $ 
+    Emitter $ do
+        a <- readCRef ref
+        if a < n
+          then do
+          writeCRef ref (a+1)
+          pure (Just a)
+        else (pure Nothing), ref)
+
+exc' :: (MonadIO m, MonadConc m) => Int -> m ([Int],[Int])
+exc' n = do
+  (b, c) <- broadcast'
+  (ec, eref) <- eCounter 0 n 
+  let e1 = subscribe' b
+  let e2 = subscribe' b
+  fuse' (pure . pure) (pure $ Box c ec)
+  (_,c1,r1) <- cCRef
+  (_,c2,r2) <- cCRef
+  fuse (pure . pure) (Box <$> (liftC <$> c1) <*> (e1))
+  fuse (pure . pure) (Box <$> (liftC <$> c2) <*> (e2))
+  eres <- readCRef eref
+  putStrLn $ "eref: " <> (show eres :: Text)
+  (,) <$> r1 <*> r2
+
+-- | a broadcaster 
+newtype Broadcaster' m a = Broadcaster'
+  { unBroadcast :: TVar (STM m) (Committer m a)
+  }
+
+-- | create a (broadcaster, committer)
+broadcast' :: (Show a, MonadConc m, MonadIO m) => m (Broadcaster' m a, Committer m a)
+broadcast' = do
+  ref <- C.atomically $ newTVar mempty
+  let com = Committer $ \a -> do
+        putStrLn $ "broadcaster': " <> (show a :: Text)
+        c <- C.atomically $ readTVar ref
+        commit c a
+  pure (Broadcaster' ref, com)
+
+-- | subscribe to a broadcaster
+subscribe' :: (Show a, MonadIO m, MonadConc m) => Broadcaster' m a -> Cont m (Emitter m a)
+subscribe' (Broadcaster' tvar) = Cont $ \e -> queueELog cio e
   where
-    getNext = maybe (Right ()) Left <$> emit (liftE' e)
-
--- | turn a stream into a committer
-fromStreamM :: (MonadConc m) => Stream (Of b) m () -> Committer (STM m) b -> m ()
-fromStreamM s c = go s
-  where
-    go str = do
-      eNxt <- S.next str -- uncons requires r ~ ()
-      forM_ eNxt $ \(a, str') -> do
-        continue <- commit (liftC' c) a
-        when continue (go str')
+    cio c = C.atomically $ modifyTVar' tvar (mappend c)
 
 -- * primitives
 -- | fuse an emitter directly to a committer
-fuse_ :: (Monad m) => Emitter m a -> Committer m a -> m ()
-fuse_ e c = go
+fuse_' :: (Show a, MonadIO m) => Emitter m a -> Committer m a -> m ()
+fuse_' e c = go
   where
     go = do
       a <- emit e
+      putStrLn $ "fuse_' emit: " <> (show a :: Text)
       c' <- maybe (pure False) (commit c) a
+      putStrLn $ "fuse_' commit: " <> (show c' :: Text)
       when c' go
 
--- | slightly more efficient version
-fuseSTM_ :: (MonadConc m) => Emitter (STM m) a -> Committer (STM m) a -> m ()
-fuseSTM_ e c = go
-  where
-    go = do
-      b <-
-        atomically $ do
-          a <- emit e
-          maybe (pure False) (commit c) a
-      when b go
+fuse' :: (Show b, MonadIO m) => (a -> m (Maybe b)) -> Cont m (Box m b a) -> m ()
+fuse' f box = with box $ \(Box c e) -> fuse_' (emap f e) c
 
-fuse :: (Monad m) => (a -> m (Maybe b)) -> Cont m (Box m b a) -> m ()
-fuse f box = with box $ \(Box c e) -> fuse_ (emap f e) c
+-- exEmerge :: (MonadIO m, MonadConc m) => Int -> Int -> Int -> Int -> m [Int]
+exEmerge :: MonadConc m => Int -> Int -> Int -> Int -> m ([Int], Int, Int)
+exEmerge st1 st2 n1 n2 = do
+  (e1, eref1) <- eCounter st1 n1
+  (e2, eref2) <- eCounter st2 n2
+  (_,c1,r1) <- cCRef
+  fuse (pure . pure) $ Box <$> (liftC <$> c1) <*> emergeM (pure (e1, e2))
+  (,,) <$> r1 <*> readCRef eref1 <*> readCRef eref2
 
-fuse' :: (MonadConc m) => (a -> (STM m) (Maybe b)) -> Cont m (Box (STM m) b a) -> m ()
-fuse' f box = with box $ \(Box c e) -> fuseSTM_ (emap f e) c
+exEmergeM :: MonadConc m => Int -> Int -> Int -> Int -> m ([Int], Int, Int)
+exEmergeM st1 st2 n1 n2 = do
+  (e1, eref1) <- eCounter' st1 n1
+  (e2, eref2) <- eCounter' st2 n2
+  (_,c1,r1) <- cCRef
+  fuse (pure . pure) $ Box <$> (liftC <$> c1) <*> emergeM ((,) <$> e1 <*> e2)
+  (,,) <$> r1 <*> readCRef eref1 <*> readCRef eref2
+
+
+temerge :: IO Bool
+temerge = dejafuWay
+    (randomly (mkStdGen 42) 1000)
+    defaultMemType
+    "test emergeM"
+    alwaysSame
+    (exEmergeM 0 0 2 2)
+
+exCSplit :: MonadConc m => Int -> Int -> m [Int]
+exCSplit st1 n1 = do
+  (e1, eref1) <- eCounter' st1 n1
+  (_,c1,r1) <- cCRef
+  let cs = splitCommitM (liftC <$> c1)
+  let c2 = contCommit' <$> cs
+  fuse (pure . pure) $ Box <$> (liftC <$> (liftA2 (<>) c1 c1)) <*> e1
+  r1
+
+contCommit' :: Either (Committer m Int) (Committer m Int) -> Committer m Int
+contCommit' ec =
+  Committer $ \a ->
+    case ec of
+      Left lc -> commit (contramap (100+) lc) a
+      Right rc -> commit rc a
+
+splitCommitM :: (MonadConc m) =>
+     Cont m (Committer m a)
+  -> Cont m (Either (Committer m a) (Committer m a))
+splitCommitM c =
+  Cont $ \kk ->
+    with c $ \c' ->
+      fst <$>
+      C.concurrently
+        (queueCM (kk . Left) (`fuse_` c'))
+        (queueCM (kk . Right) (`fuse_` c'))
 
 main :: IO ()
-main = sequence_ $ autocheck <$> [ex1, ex2]
+main = do
+  sequence_ $ autocheck <$> [ex1, ex2, ex3]
+  -- autocheck (exb 2)
+  void $ dejafuWay
+    (randomly (mkStdGen 42) 1000)
+    defaultMemType
+    "test exb"
+    alwaysSame
+    (exb 10)
+
+counter :: (MonadState Int m, C.MonadConc m) => Int -> StateT Int m (Emitter m Int)
+counter n =
+  pure $
+    Emitter $ do
+        a <- get
+        case a < n of
+          False -> pure Nothing
+          True -> do
+            put $ a + 1
+            pure (Just a)
+
+-- counterT :: (C.MonadConc m) => Int -> StateT Int m (Emitter m Int)
+counterT :: (Num a, Ord a, Monad m) => a -> Emitter (StateT a m) a
+counterT n =
+    Emitter $ do
+        a <- Trans.get
+        case a < n of
+          False -> pure Nothing
+          True -> do
+            Trans.put $ a + 1
+            pure (Just a)
+
+
+rememberer :: (MonadState [Int] m, C.MonadConc m) => StateT [Int] m (Committer m Int)
+rememberer =
+  pure $
+    Committer $ \a -> do
+        modify (a:)
+        pure True
+
+remembererT :: (Ord a, Monad m) => Committer (StateT [a] m) a
+remembererT =
+    Committer $ \a -> do
+        Trans.modify (a:)
+        pure True
+
+
+data StateExs = StateExs { count :: Int, result :: [Int]} deriving (Show, Eq, Generic)
+
+boxCount ::
+  (MonadConc m, MonadState StateExs m) =>
+  Int ->
+  m (Box m Int Int)
+boxCount n = Box <$> pure rememberer' <*> pure counter' where
+  counter' =
+    Emitter $ do
+        a <- use #count
+        case a < n of
+          False -> pure Nothing
+          True -> do
+            #count += 1
+            pure (Just a)
+  rememberer' =
+    Committer $ \a -> do
+        #result %= (a:)
+        pure True
+
+countEmitter :: (Ord a, Num a, MonadState s m, Data.Generics.Product.HasField "count" s s a a) => a -> Emitter m a
+countEmitter n = Emitter $ do
+  a <- use #count
+  case a < n of
+    False -> pure Nothing
+    True -> do
+      #count += 1
+      pure (Just a)
+
+resultCommitter :: (MonadState s m, Data.Generics.Product.HasField "result" s s [a] [a]) => Committer m a
+resultCommitter = Committer $ \a -> do
+  #result %= (a:)
+  pure True
+
+-- boxCount' :: (MonadState StateExs m, MonadConc m) => Int -> Box m Int Int
+boxCount' n = Box (zoom #result resultCommitter) (zoom #count (countEmitter n))
+
+exs :: (MonadConc m) => Int -> m [Int]
+exs n = do
+  (StateExs _ res) <- execStateT
+    (fuse (pure . pure) (pure $ Box resultCommitter (countEmitter n)))
+    (StateExs 0 [])
+  pure (reverse res)
+
+fuse'' :: (Show b, MonadIO m) => (a -> m (Maybe b)) -> Cont m (Box m b a) -> m ()
+fuse'' f box = with box $ \(Box c e) -> fuse_' (emap f e) c
+
+-- * primitives
+-- | fuse an emitter directly to a committer
+fuse_'' :: (Show a, MonadIO m) => Emitter m a -> Committer m a -> m ()
+fuse_'' e c = go
+  where
+    go = do
+      a <- emit e
+      putStrLn $ "fuse_' emit: " <> (show a :: Text)
+      c' <- maybe (pure False) (commit c) a
+      putStrLn $ "fuse_' commit: " <> (show c' :: Text)
+      when c' go

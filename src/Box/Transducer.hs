@@ -14,10 +14,6 @@ module Box.Transducer
   ( Transducer(..)
   , etc
   , etcM
-  , toStream
-  , toStreamIO
-  , fromStream
-  , fromStreamIO
   , asPipe
   ) where
 
@@ -34,6 +30,9 @@ import qualified Pipes.Prelude as Pipes
 import Protolude hiding ((.), (<>))
 import Streaming (Of(..), Stream)
 import qualified Streaming.Prelude as S
+import Control.Monad.Conc.Class as C
+-- import Control.Monad.Morph
+import Control.Monad.Base (MonadBase, liftBase)
 
 -- | transduction
 -- [wiki](https://en.wikipedia.org/wiki/Transducer) says: "A transducer is a device that converts energy from one form to another." Translated to context, this Transducer converts a stream of type a to a stream of a different type.
@@ -60,61 +59,16 @@ asPipe p s = ((s & Pipes.unfoldr S.next) Pipes.>-> p) & S.unfoldr Pipes.next
 --
 -- The combination of an input tape, an output tape, and a state-based stream computation lends itself to the etc computation as a [finite-state transducer](https://en.wikipedia.org/wiki/Finite-state_transducer) or mealy machine.
 --
-etc :: s -> Transducer s a b -> Cont IO (Box STM b a) -> IO s
+etc :: (MonadConc m) => s -> Transducer s a b -> Cont m (Box (C.STM m) b a) -> m s
 etc st t box =
   with box $ \(Box c e) ->
-    (e |> toStreamIO |> transduce t |> fromStreamIO) c |> flip execStateT st
+    (e |> toStream |> transduce t |> fromStream) c |> flip execStateT st
 
-etcM :: (MonadBase m m) => s -> Transducer s a b -> Cont m (Box m b a) -> m s
+etcM :: (MonadConc m, MonadBase m m) => s -> Transducer s a b -> Cont m (Box m b a) -> m s
 etcM st t box =
   with box $ \(Box c e) ->
-    (e |> toStreamM |> transduce t |> fromStreamM) c |> flip execStateT st
-
--- | turn an emitter into a stream
-toStreamM :: (MonadBase m n) => Emitter m a -> Stream (Of a) n ()
-toStreamM e = S.untilRight getNext
+    (liftE' e |> toStreamM |> transduce t |> fromStreamM) (liftC' c) |> flip execStateT st
   where
-    getNext = maybe (Right ()) Left <$> liftBase (emit e)
+    liftC' c = Committer $ liftBase . commit c
+    liftE' = Emitter . liftBase . emit
 
--- | turn a stream into a committer
-fromStreamM :: (MonadBase m n) => Stream (Of b) n () -> Committer m b -> n ()
-fromStreamM s c = go s
-  where
-    go str = do
-      eNxt <- S.next str -- uncons requires r ~ ()
-      forM_ eNxt $ \(a, str') -> do
-        continue <- liftBase $ commit c a
-        when continue (go str')
-
--- | turn an emitter into a stream
-toStream :: (MonadBase STM m) => Emitter STM a -> Stream (Of a) m ()
-toStream e = S.untilRight getNext
-  where
-    getNext = maybe (Right ()) Left <$> liftBase (emit e)
-
--- | turn an emitter into a stream
-toStreamIO :: (MonadBase IO m) => Emitter STM a -> Stream (Of a) m ()
-toStreamIO e = S.untilRight getNext
-  where
-    getNext = maybe (Right ()) Left <$> liftBase (atomically (emit e))
-
--- | turn a stream into a committer
-fromStream :: (MonadBase STM m) => Stream (Of b) m () -> Committer STM b -> m ()
-fromStream s c = go s
-  where
-    go str = do
-      eNxt <- S.next str -- uncons requires r ~ ()
-      forM_ eNxt $ \(a, str') -> do
-        continue <- liftBase $ commit c a
-        when continue (go str')
-
--- | turn a stream into a committer
-fromStreamIO ::
-     (MonadBase IO m) => Stream (Of b) m () -> Committer STM b -> m ()
-fromStreamIO s c = go s
-  where
-    go str = do
-      eNxt <- S.next str -- uncons requires r ~ ()
-      forM_ eNxt $ \(a, str') -> do
-        continue <- liftBase $ atomically $ commit c a
-        when continue (go str')
