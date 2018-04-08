@@ -10,7 +10,7 @@
 
 -- | Streaming functionality
 --
-module Etc.Stream
+module Box.Stream
   ( toStream
   , fromStream
   , toCommit
@@ -22,12 +22,11 @@ module Etc.Stream
 
 import Control.Category
 import Control.Monad.Base (MonadBase)
-import Etc.Box
-import Etc.Committer
-import Etc.Cont
-import Etc.Emitter
-import Etc.Queue
-import Etc.Transducer
+import Box.Committer
+import Box.Cont
+import Box.Emitter
+import Box.Queue
+import Box.Transducer
 import Flow
 import Protolude hiding ((.), (<>))
 import Streaming (Of(..), Stream)

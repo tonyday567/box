@@ -11,7 +11,7 @@
 -- | plugs
 -- box continuations
 --
-module Etc.Plugs
+module Box.Plugs
   ( commitPlug
   , emitPlug
   , boxPlug
@@ -19,12 +19,11 @@ module Etc.Plugs
   ) where
 
 import Control.Category
-import Data.Semigroup hiding (First, getFirst)
-import Etc.Committer
-import Etc.Cont
-import Etc.Box
-import Etc.Queue
-import Etc.Emitter
+import Box.Committer
+import Box.Cont
+import Box.Box
+import Box.Queue
+import Box.Emitter
 import GHC.Conc
 import Protolude hiding ((.), (<>))
 

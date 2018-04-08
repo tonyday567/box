@@ -5,7 +5,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# OPTIONS_GHC -Wall #-}
 
-module Etc.Action
+module Box.Action
   ( ActionComm(..)
   , ControlComm(..)
   , ActionBox
@@ -29,7 +29,7 @@ import Data.Default
 import Data.IORef
 import Data.Semigroup
 import qualified Data.Text as Text
-import Etc
+import Box
 import Flow
 import GHC.Generics
 import Protolude hiding ((.))

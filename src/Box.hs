@@ -7,45 +7,45 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -Wall #-}
 
--- | `emit` - `transduce` - `commit`
+-- | Boxes that `emit`, `transduce` & `commit`
 --
 -- This library follows the ideas and code from [pipes-concurrency](https://hackage.haskell.org/package/pipes-concurrency) and [mvc](https://hackage.haskell.org/package/mvc) but with some polymorphic tweaks and definitively more pretentious names.
 --
 --
-module Etc
+module Box
   ( -- $setup
     -- $commit
     -- $emit
     -- $transduce
-    module Etc.Box
-  , module Etc.Committer
-  , module Etc.Connectors
-  , module Etc.Cont
-  , module Etc.Emitter
-  , module Etc.IO
-  , module Etc.Plugs
-  , module Etc.Queue
-  , module Etc.Stream
-  , module Etc.Time
-  , module Etc.Transducer
+    module Box.Box
+  , module Box.Committer
+  , module Box.Connectors
+  , module Box.Cont
+  , module Box.Emitter
+  , module Box.IO
+  , module Box.Plugs
+  , module Box.Queue
+  , module Box.Stream
+  , module Box.Time
+  , module Box.Transducer
   ) where
 
-import Etc.Box
-import Etc.Committer
-import Etc.Connectors
-import Etc.Cont
-import Etc.Emitter
-import Etc.IO
-import Etc.Plugs
-import Etc.Queue
-import Etc.Stream
-import Etc.Time
-import Etc.Transducer
+import Box.Box
+import Box.Committer
+import Box.Connectors
+import Box.Cont
+import Box.Emitter
+import Box.IO
+import Box.Plugs
+import Box.Queue
+import Box.Stream
+import Box.Time
+import Box.Transducer
 
 -- $setup
 -- >>> :set -XOverloadedStrings
 -- >>> import Protolude
--- >>> import Etc
+-- >>> import Box
 -- >>> import qualified Streaming.Prelude as S
 -- >>> let committer' = cStdout 100
 -- >>> let emitter' = toEmit (S.each ["hi","bye","q","x"])

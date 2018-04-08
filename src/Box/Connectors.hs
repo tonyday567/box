@@ -10,7 +10,7 @@
 {-# OPTIONS_GHC -fno-warn-type-defaults #-}
 
 -- | various ways to connect things up
-module Etc.Connectors
+module Box.Connectors
   ( fuse_
   , fuseSTM_
   , fuse
@@ -27,11 +27,11 @@ module Etc.Connectors
 import Control.Category
 import Control.Lens hiding ((:>), (.>), (<|), (|>))
 import Data.Semigroup hiding (First, getFirst)
-import Etc.Box
-import Etc.Queue
-import Etc.Committer
-import Etc.Cont
-import Etc.Emitter
+import Box.Box
+import Box.Queue
+import Box.Committer
+import Box.Cont
+import Box.Emitter
 import Protolude hiding ((.), (<>))
 
 -- * primitives

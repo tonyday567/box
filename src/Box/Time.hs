@@ -8,7 +8,7 @@
 {-# OPTIONS_GHC -fno-warn-type-defaults #-}
 
 -- | timing effects
-module Etc.Time
+module Box.Time
   ( sleep
   , keepOpen
   , delayTimed
@@ -22,9 +22,9 @@ import Control.Concurrent (threadDelay)
 import Control.Monad
 import Data.Maybe
 import Data.Time
-import Etc.Cont
-import Etc.Emitter
-import Etc.Stream
+import Box.Cont
+import Box.Emitter
+import Box.Stream
 import Protolude
 import qualified Streaming.Prelude as S
 import System.IO.Unsafe

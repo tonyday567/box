@@ -1,7 +1,7 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# OPTIONS_GHC -Wall #-}
 
-module Etc.Broadcast
+module Box.Broadcast
   ( Broadcaster(..)
   , broadcast
   , subscribe
@@ -11,11 +11,10 @@ module Etc.Broadcast
   ) where
 
 import Control.Concurrent.STM
-import Etc.Box
-import Etc.Committer
-import Etc.Cont
-import Etc.Emitter
-import Etc.Queue
+import Box.Committer
+import Box.Cont
+import Box.Emitter
+import Box.Queue
 import Protolude
 
 newtype Broadcaster m a = Broadcaster

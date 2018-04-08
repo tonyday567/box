@@ -8,7 +8,7 @@
 {-# OPTIONS_GHC -Wall #-}
 
 -- | `commit`
-module Etc.Committer
+module Box.Committer
   ( Committer(..)
   , liftC
   , cmap

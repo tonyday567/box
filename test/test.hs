@@ -7,4 +7,4 @@ import Protolude
 import Test.DocTest
 
 main :: IO ()
-main = doctest ["src/Etc.hs"]
+main = doctest ["src/Box.hs"]

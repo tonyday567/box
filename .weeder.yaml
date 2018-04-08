@@ -1,5 +1,5 @@
 - package:
-  - name: etc
+  - name: box
   - section:
     - name: test:test
     - message:

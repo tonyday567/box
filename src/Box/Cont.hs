@@ -4,7 +4,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# OPTIONS_GHC -Wall #-}
 
-module Etc.Cont
+module Box.Cont
   ( Cont(..)
   , with
   ) where

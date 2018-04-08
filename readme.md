@@ -1,7 +1,7 @@
-[etc](https://tonyday567.github.io/etc/index.html) [![Build Status](https://travis-ci.org/tonyday567/etc.svg)](https://travis-ci.org/tonyday567/etc)
+[box](https://tonyday567.github.io/box/index.html) [![Build Status](https://travis-ci.org/tonyday567/box.svg)](https://travis-ci.org/tonyday567/box)
 ===
 
-emit - transduce - commit
+A concurrent, effectful, composable box
 
 compilation recipe
 ---

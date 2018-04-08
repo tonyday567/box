@@ -4,7 +4,7 @@
 {-# OPTIONS_GHC -Wall #-}
 
 -- | based on https://github.com/Gabriel439/Haskell-MVC-Updates-Library
-module Etc.Updater
+module Box.Updater
   ( Updater(..)
   , updater
   , listen
@@ -15,7 +15,7 @@ import Control.Applicative (Applicative((<*>), pure))
 import Control.Foldl (Fold(..), FoldM(..))
 import qualified Control.Foldl as Foldl
 import Data.IORef (newIORef, readIORef, writeIORef)
-import Etc
+import Box
 import Protolude
 
 -- | An updater of a value a, where the updating process consists of an IO fold over an emitter

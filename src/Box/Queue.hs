@@ -11,7 +11,7 @@
 -- | queues
 -- Follows [pipes-concurrency](https://hackage.haskell.org/package/pipes-concurrency)
 --
-module Etc.Queue
+module Box.Queue
   ( Queue(..)
   , withQ
   , queue
@@ -23,9 +23,9 @@ module Etc.Queue
   , waitCancel
   ) where
 
-import Etc.Box
-import Etc.Committer
-import Etc.Emitter
+import Box.Box
+import Box.Committer
+import Box.Emitter
 import GHC.Conc
 import Protolude hiding ((.), (<>))
 import qualified Control.Concurrent.STM as S

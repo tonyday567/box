@@ -10,7 +10,7 @@
 
 -- | `transduce`
 --
-module Etc.Transducer
+module Box.Transducer
   ( Transducer(..)
   , etc
   , etcM
@@ -24,10 +24,10 @@ module Etc.Transducer
 import Control.Category
 import Control.Lens hiding ((:>), (.>), (<|), (|>))
 import Control.Monad.Base (MonadBase, liftBase)
-import Etc.Box
-import Etc.Committer
-import Etc.Cont
-import Etc.Emitter
+import Box.Box
+import Box.Committer
+import Box.Cont
+import Box.Emitter
 import Flow
 import qualified Pipes
 import qualified Pipes.Prelude as Pipes

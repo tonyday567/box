@@ -9,7 +9,7 @@
 {-# OPTIONS_GHC -fno-warn-type-defaults #-}
 
 -- | IO actions
-module Etc.IO
+module Box.IO
   ( cStdin_
   , cStdin
   , cStdin'
@@ -36,13 +36,13 @@ import Control.Lens hiding ((:>), (.>), (<|), (|>))
 import Data.IORef
 import Data.Semigroup hiding (First, getFirst)
 import qualified Data.Text.IO as Text
-import Etc.Box
-import Etc.Committer
-import Etc.Cont
-import Etc.Emitter
-import Etc.Plugs
-import Etc.Stream
-import Etc.Transducer
+import Box.Box
+import Box.Committer
+import Box.Cont
+import Box.Emitter
+import Box.Plugs
+import Box.Stream
+import Box.Transducer
 import Flow
 import Protolude hiding ((.), (<>))
 import Streaming (Of(..), Stream)

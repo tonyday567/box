@@ -10,7 +10,7 @@
 
 -- | A box is something that commits and emits
 --
-module Etc.Box
+module Box.Box
   ( Box(..)
   , liftB
   , safeIOToSTM
@@ -20,8 +20,8 @@ import Control.Category
 import qualified Control.Exception
 import Control.Lens hiding ((:>), (.>), (<|), (|>))
 import Data.Semigroup hiding (First, getFirst)
-import Etc.Committer
-import Etc.Emitter
+import Box.Committer
+import Box.Emitter
 import GHC.Conc
 import Protolude hiding ((.), (<>))
 

@@ -1,18 +1,18 @@
-name: etc
+name: box
 version: '0.0.1.1'
-synopsis: etc
-description: emit - transduce - commit
+synopsis: boxes
+description: concurrent, effectful boxes
 category: project
 author: Tony Day
 maintainer: tonyday567@gmail.com
 copyright: Tony Day (c) 2017
 license: BSD3
-github: tonyday567/etc
+github: tonyday567/box
 extra-source-files:
-- stack.yaml
-- readme.md
+  - stack.yaml
+  - readme.md
 dependencies:
-- base >=4.7 && <5
+  - base >=4.7 && <5
 library:
   source-dirs: src
   ghc-options:
@@ -23,45 +23,45 @@ library:
     - -Wredundant-constraints
     - -funbox-strict-fields
   exposed-modules:
-  - Etc
-  - Etc.Action
-  - Etc.Box
-  - Etc.Broadcast
-  - Etc.Committer
-  - Etc.Connectors
-  - Etc.Cont
-  - Etc.Emitter
-  - Etc.IO
-  - Etc.Plugs
-  - Etc.Queue
-  - Etc.Stream
-  - Etc.Time
-  - Etc.Transducer
-  - Etc.Updater
+    - Box
+    - Box.Action
+    - Box.Box
+    - Box.Broadcast
+    - Box.Committer
+    - Box.Connectors
+    - Box.Cont
+    - Box.Emitter
+    - Box.IO
+    - Box.Plugs
+    - Box.Queue
+    - Box.Stream
+    - Box.Time
+    - Box.Transducer
+    - Box.Updater
   dependencies:
-  - async
-  - attoparsec
-  - contravariant
-  - data-default
-  - flow
-  - foldl
-  - lens
-  - pipes
-  - profunctors
-  - protolude
-  - stm
-  - streaming 
-  - text
-  - time
-  - transformers
-  - transformers-base
+    - async
+    - attoparsec
+    - contravariant
+    - data-default
+    - flow
+    - foldl
+    - lens
+    - pipes
+    - profunctors
+    - protolude
+    - stm
+    - streaming 
+    - text
+    - time
+    - transformers
+    - transformers-base
 tests:
   test:
     main: test.hs
     source-dirs: test
     dependencies:
-    - doctest
-    - protolude
+      - doctest
+      - protolude
     ghc-options:
       - -Wall
       - -Wcompat

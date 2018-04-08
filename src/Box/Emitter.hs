@@ -9,7 +9,7 @@
 {-# OPTIONS_GHC -fno-warn-type-defaults #-}
 
 -- | `emit`
-module Etc.Emitter
+module Box.Emitter
   ( Emitter(..)
   , emap
   , liftE
