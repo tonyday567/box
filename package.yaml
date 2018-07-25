@@ -99,3 +99,40 @@ tests:
       - -Wincomplete-record-updates
       - -Wincomplete-uni-patterns
       - -Wredundant-constraints
+executables:
+  box-test:
+    main: ctest.hs
+    source-dirs: test
+    ghc-options:
+      - -funbox-strict-fields
+      - -fforce-recomp
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+    dependencies:
+      - async
+      - attoparsec
+      - box
+      - concurrency
+      - contravariant
+      - data-default
+      - dejafu
+      - exceptions
+      - flow
+      - foldl
+      - generic-lens-labels
+      - generic-lens
+      - lens
+      - mmorph
+      - pipes
+      - profunctors
+      - protolude
+      - random
+      - stm
+      - streaming 
+      - text
+      - time
+      - transformers
+      - transformers-base
+
+

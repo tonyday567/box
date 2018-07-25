@@ -19,16 +19,16 @@ module Main where
 import Control.Category (id)
 import Control.Monad.Conc.Class as C
 import Control.Concurrent.Classy.STM as C
-import Etc.Box
-import Etc.Committer
-import Etc.Emitter
-import Etc.Broadcast
-import Etc.Connectors
-import Etc.Cont
-import Etc.IO
-import Etc.Queue
-import Etc.Stream
-import Etc.Transducer
+import Box.Box
+import Box.Committer
+import Box.Emitter
+import Box.Broadcast
+import Box.Connectors
+import Box.Cont
+import Box.IO
+import Box.Queue
+import Box.Stream
+import Box.Transducer
 import Protolude hiding (STM)
 import Test.DejaFu
 import qualified Streaming.Prelude as S
@@ -263,7 +263,7 @@ counter :: (MonadState Int m, C.MonadConc m) => Int -> StateT Int m (Emitter m I
 counter n =
   pure $
     Emitter $ do
-        a <- get
+        a <- Protolude.get
         case a < n of
           False -> pure Nothing
           True -> do
