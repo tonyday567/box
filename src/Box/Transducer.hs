@@ -24,6 +24,7 @@ import Box.Box
 import Box.Committer
 import Box.Cont
 import Box.Emitter
+import Box.Stream
 import Flow
 import qualified Pipes
 import qualified Pipes.Prelude as Pipes

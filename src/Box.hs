@@ -94,10 +94,10 @@ import Box.Transducer
 --
 
 -- | splitCommit
--- 
--- >>> cs <- splitCommit (cStdout 100)
--- >>> let c2 = contCommit <$> cs
--- >>> (etcM () transducer' $ (Box <$> c2 <*> (liftE <$> emitter'))) >> sleep 1
+-- FIXME:
+-- > cs <- splitCommit (cStdout 100)
+-- > let c2 = contCommit <$> cs
+-- > (etcM () transducer' $ (Box <$> c2 <*> (liftE <$> emitter'))) >> sleep 1
 --
 
 -- $emit

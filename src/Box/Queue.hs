@@ -27,8 +27,8 @@ module Box.Queue
 import Box.Box
 import Box.Committer
 import Box.Emitter
-import GHC.Conc
-import Protolude hiding ((<>), STM, check, wait, cancel, atomically, withAsync, concurrently)
+-- import GHC.Conc
+import Protolude hiding (STM, check, wait, cancel, atomically, withAsync, concurrently)
 import Control.Concurrent.Classy.STM as C
 import Control.Monad.Conc.Class as C
 import Control.Concurrent.Classy.Async as C

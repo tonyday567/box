@@ -32,7 +32,7 @@ import Box.Committer
 import Box.Cont
 import Box.Emitter
 import Box.Queue
-import Box.Transducer
+-- import Box.Transducer
 import Flow
 import Streaming (Of(..), Stream)
 import qualified Control.Foldl as L

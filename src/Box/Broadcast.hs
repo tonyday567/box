@@ -10,12 +10,17 @@ module Box.Broadcast
   , widen
   ) where
 
-import Control.Concurrent.STM
+-- import Control.Concurrent.STM
 import Box.Committer
 import Box.Cont
 import Box.Emitter
 import Box.Queue
-import Protolude
+-- import Protolude
+import Protolude hiding (STM(..), atomically, (.), (<>))
+import Control.Concurrent.Classy.STM as C
+import Control.Monad.Conc.Class as C
+import Control.Concurrent.Classy.Async as C
+import Control.Monad.Catch as C
 
 -- | a broadcaster 
 newtype Broadcaster m a = Broadcaster

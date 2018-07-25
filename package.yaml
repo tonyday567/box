@@ -67,7 +67,7 @@ tests:
     main: test.hs
     source-dirs: test
     dependencies:
-      - etc
+      - box
       - async
       - attoparsec
       - concurrency
