@@ -24,12 +24,12 @@ library:
     - -funbox-strict-fields
   exposed-modules:
     - Box
-    - Box.Action
     - Box.Box
     - Box.Broadcast
     - Box.Committer
     - Box.Connectors
     - Box.Cont
+    - Box.Control
     - Box.Emitter
     - Box.IO
     - Box.Plugs
