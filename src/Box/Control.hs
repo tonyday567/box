@@ -29,7 +29,7 @@ import Control.Lens hiding ((|>))
 import Control.Monad
 import Data.Data
 import Data.Default
-import Data.IORef
+-- import Data.IORef
 import Flow
 import GHC.Generics
 import Protolude hiding ((.), STM)
@@ -87,7 +87,7 @@ controlBox
   :: ControlConfig
      -> IO a -> Box (STM IO) ControlComm ControlComm -> IO Bool
 controlBox cfg app (Box c e) = do
-  ref' <- newIORef Nothing
+  ref' <- C.newIORef Nothing
   go ref'
   where
     go ref = do
@@ -97,12 +97,12 @@ controlBox cfg app (Box c e) = do
         Just msg' ->
           case msg' of
             Check -> do
-              a <- readIORef ref
+              a <- C.readIORef ref
               _ <-
                 C.atomically $ commit c $ On (bool True False (isNothing a))
               go ref
             Start -> do
-              a <- readIORef ref
+              a <- C.readIORef ref
               when (isNothing a) (void $ start ref c)
               go ref
             Stop -> cancel' ref >> go ref
@@ -115,18 +115,18 @@ controlBox cfg app (Box c e) = do
                   _ <- C.atomically $ commit c Start
                   go ref
             Reset -> do
-              a <- readIORef ref
+              a <- C.readIORef ref
               when (not $ isNothing a) (cancel' ref)
               _ <- start ref c
               go ref
             _ -> go ref
     start ref c' = do
       a' <- async (app >> C.atomically (commit c' Died))
-      writeIORef ref (Just a')
+      C.writeIORef ref (Just a')
       C.atomically $ commit c' Ready
     cancel' ref = do
-      mapM_ cancel =<< readIORef ref
-      writeIORef ref Nothing
+      mapM_ cancel =<< C.readIORef ref
+      C.writeIORef ref Nothing
 
 runControlBox :: ControlConfig -> IO () -> IO ()
 runControlBox cfg action =

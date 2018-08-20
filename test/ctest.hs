@@ -19,6 +19,7 @@ module Main where
 import Control.Category (id)
 import Control.Monad.Conc.Class as C
 import Control.Concurrent.Classy.STM as C
+import Control.Concurrent.Classy.CRef as C
 import Box.Box
 import Box.Committer
 import Box.Emitter

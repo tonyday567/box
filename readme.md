@@ -6,8 +6,8 @@ A concurrent, effectful, composable box
 compilation recipe
 ---
 
+`box-test` takes about 5 minutes to run.
+
 ```
-stack build --test --fast --haddock --file-watch
-stack hoogle -- generate --local
-stack hoogle -- server --local --port=8080
+stack build --test --exec "$(stack path --local-install-root)/bin/box-test" --file-watch
 ```
