@@ -1,10 +1,9 @@
-resolver: nightly-2018-08-17
+resolver: nightly-2019-02-24
 
 packages:
   - .
 
 extra-deps:
   - flow-1.0.12
-  - generic-lens-labels-0.1.0.2
 
 allow-newer: true

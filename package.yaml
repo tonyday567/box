@@ -48,7 +48,6 @@ library:
   - exceptions
   - flow
   - foldl
-  - generic-lens-labels
   - generic-lens
   - lens
   - mmorph
@@ -78,7 +77,6 @@ tests:
       - flow
       - foldl
       - generic-lens
-      - generic-lens-labels
       - lens
       - mmorph
       - pipes
@@ -120,7 +118,6 @@ executables:
       - exceptions
       - flow
       - foldl
-      - generic-lens-labels
       - generic-lens
       - lens
       - mmorph

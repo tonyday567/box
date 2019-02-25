@@ -35,11 +35,9 @@ import Box.Queue
 import Box.Committer
 import Box.Cont
 import Box.Emitter
-import Protolude hiding (STM(..), (.), (<>))
-import Control.Concurrent.Classy.STM as C
+import Protolude hiding (STM, (.), (<>))
 import Control.Monad.Conc.Class as C
 import Control.Concurrent.Classy.Async as C
-import Control.Monad.Catch as C
 
 -- * primitives
 -- | fuse an emitter directly to a committer

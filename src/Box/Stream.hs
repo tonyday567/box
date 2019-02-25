@@ -19,14 +19,11 @@ module Box.Stream
   , toCommitSink
   , toEmit
   , queueStream
-  , toStream
   , toStreamM
-  , fromStream
   , fromStreamM
   ) where
 
 import Control.Category
-import Control.Monad.Base (MonadBase)
 
 import Box.Committer
 import Box.Cont

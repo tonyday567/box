@@ -48,7 +48,7 @@ import Streaming (Of(..), Stream)
 import qualified Streaming.Internal as S
 import qualified Streaming.Prelude as S
 import qualified Control.Monad.Conc.Class as C
-import qualified Control.Concurrent.Classy.CRef as C
+import qualified Control.Concurrent.Classy.IORef as C
 import Control.Monad.Conc.Class (STM)
 
 -- * console
@@ -131,21 +131,21 @@ commitLines filePath =
 
 -- * concurrent refs
 -- | commit to a list CRef
-cCRef :: (C.MonadConc m) => m (C.CRef m [b], Cont m (Committer (C.STM m) b), m [b])
+cCRef :: (C.MonadConc m) => m (C.IORef m [b], Cont m (Committer (C.STM m) b), m [b])
 cCRef = do
-  ref <- C.newCRef []
+  ref <- C.newIORef []
   let c = toCommitFold $
-        L.FoldM (\x a -> C.modifyCRef x (a :) >> pure x) (pure ref) (const $ pure ())
-  let res = reverse <$> C.readCRef ref
+        L.FoldM (\x a -> C.modifyIORef x (a :) >> pure x) (pure ref) (const $ pure ())
+  let res = reverse <$> C.readIORef ref
   pure (ref, c, res)
 
 -- | commit to a monoidal CRef
-cCRefM :: (C.MonadConc m, Monoid a) => m (C.CRef m a, Cont m (Committer (C.STM m) a), m a)
+cCRefM :: (C.MonadConc m, Monoid a) => m (C.IORef m a, Cont m (Committer (C.STM m) a), m a)
 cCRefM = do
-  ref <- C.newCRef mempty
+  ref <- C.newIORef mempty
   let c = toCommitFold $
-        L.FoldM (\x a -> C.modifyCRef x (a <>) >> pure x) (pure ref) (const $ pure ())
-  let res = C.readCRef ref
+        L.FoldM (\x a -> C.modifyIORef x (a <>) >> pure x) (pure ref) (const $ pure ())
+  let res = C.readIORef ref
   pure (ref, c, res)
 
 -- | fold an emitter through a transduction, committing to a list

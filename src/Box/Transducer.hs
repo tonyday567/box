@@ -32,8 +32,6 @@ import Protolude hiding ((.), (<>))
 import Streaming (Of(..), Stream)
 import qualified Streaming.Prelude as S
 import Control.Monad.Conc.Class as C
--- import Control.Monad.Morph
-import Control.Monad.Base (MonadBase, liftBase)
 
 -- | transduction
 -- [wiki](https://en.wikipedia.org/wiki/Transducer) says: "A transducer is a device that converts energy from one form to another." Translated to context, this Transducer converts a stream of type a to a stream of a different type.
