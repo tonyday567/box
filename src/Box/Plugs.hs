@@ -14,6 +14,7 @@
 module Box.Plugs
   ( commitPlug
   , emitPlug
+  , emitPlugM
   , boxPlug
   , boxForgetPlug
   ) where
@@ -35,6 +36,10 @@ commitPlug eio = Cont $ \cio -> queueC cio eio
 -- | hook a committer action to a queue, creating an emitter continuation
 emitPlug :: (Committer STM a -> IO r) -> Cont IO (Emitter STM a)
 emitPlug cio = Cont $ \eio -> queueE cio eio
+
+-- | hook a committer action to a queue, creating an emitter continuation
+emitPlugM :: (Committer IO a -> IO r) -> Cont IO (Emitter IO a)
+emitPlugM cio = Cont $ \eio -> queueEM cio eio
 
 -- | create a double-queued box plug
 boxPlug ::

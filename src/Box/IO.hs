@@ -17,6 +17,7 @@ module Box.IO
   , readStdin
   , eStdout_
   , eStdout
+  , eStdoutM
   , eStdout'
   , cStdout
   , showStdout
@@ -82,9 +83,21 @@ eStdout_ e = do
     Nothing -> pure ()
     Just a' -> putStrLn a'
 
+-- | a single stdout emitter action
+eStdoutM_ :: (Print a) => Emitter IO a -> IO ()
+eStdoutM_ e = do
+  a <- emit e
+  case a of
+    Nothing -> pure ()
+    Just a' -> putStrLn a'
+
 -- | a finite stdout emitter action
 eStdout :: (Print a) => Int -> Emitter (STM IO) a -> IO ()
 eStdout n = replicateM_ n . eStdout_
+
+-- | a finite stdout emitter action
+eStdoutM :: (Print a) => Int -> Emitter IO a -> IO ()
+eStdoutM n = replicateM_ n . eStdoutM_
 
 -- | a forever stdout emitter action
 eStdout' :: (Print a) => Emitter (STM IO) a -> IO ()

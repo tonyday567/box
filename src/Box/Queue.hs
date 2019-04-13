@@ -22,6 +22,8 @@ module Box.Queue
   , queueCLog
   , queueELog
   , waitCancel
+  , toBoxLog
+  , ends
   ) where
 
 import Box.Box
@@ -135,6 +137,8 @@ toBoxLog :: (Show a, MonadIO m, MonadConc m) =>
 toBoxLog q = do
   (i, o) <- atomically $ ends q
   sealed <- atomically $ newTVarN "sealed" False
+  initSeal <- atomically $ readTVar sealed
+  putStrLn $ "toBoxLog: seal: " <> (show initSeal :: Text)
   let seal = atomically $ writeTVar sealed True
   pure (Box
         (Committer (writeCheckLog sealed i))
@@ -182,6 +186,22 @@ withQM q spawner cio eio =
          (cio (committer box) `C.finally` seal)
          (eio (emitter box) `C.finally` seal))
 
+-- | connect a committer and emitter action via spawning a queue, and wait for both to complete.
+withQMLog :: (MonadConc m, MonadIO m) =>
+     Queue a
+  -> (Queue a -> m (Box m a a, m ()))
+  -> (Committer m a -> m l)
+  -> (Emitter m a -> m r)
+  -> m (l, r)
+withQMLog q spawner cio eio =
+  C.bracket
+    (spawner q)
+    (\(_, seal) -> seal)
+    (\(box, seal) ->
+       concurrently
+         (cio (committer box) `C.finally` (putStrLn ("committer sealed" :: Text) >> seal))
+         (eio (emitter box) `C.finally` (putStrLn ("emitter sealed" :: Text) >> seal)))
+
 -- | create an unbounded queue
 queue ::
   (MonadConc m) =>
@@ -223,15 +243,15 @@ queueEM ::
   m r
 queueEM cm em = snd <$> withQM Unbounded toBoxM cm em
 
-
-
 -- | create an unbounded queue, returning the emitter result
 queueELog ::
   (Show a, MonadConc m, MonadIO m) =>
   (Committer m a -> m l) ->
   (Emitter m a -> m r) ->
   m r
-queueELog cm em = snd <$> withQM Unbounded toBoxLog cm em
+queueELog cm em = snd <$> withQMLog Unbounded toBoxLog
+  (\c -> putStrLn ("cm acted" :: Text) >> cm c)
+  (\c -> putStrLn ("em acted" :: Text) >> em c)
 
 -- | create an unbounded queue, returning the committer result
 queueCLog ::
