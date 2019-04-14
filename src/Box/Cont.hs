@@ -6,6 +6,7 @@
 
 module Box.Cont
   ( Cont(..)
+  , Cont_(..)
   ) where
 
 import Control.Applicative
@@ -40,5 +41,35 @@ instance (Semigroup a) => Semigroup (Cont m a) where
   (<>) = liftA2 (<>)
 
 instance (Functor m, Semigroup a, Monoid a) => Monoid (Cont m a) where
+  mempty = pure mempty
+  mappend = (<>)
+
+-- | sometimes you have no choice but to void it up
+newtype Cont_ m a = Cont_
+  { with_ :: (a -> m ()) -> m ()
+  }
+
+instance Functor (Cont_ m) where
+  fmap f mx = Cont_ (\return_ -> mx `with_` \x -> return_ (f x))
+
+instance Applicative (Cont_ m) where
+  pure r = Cont_ (\return_ -> return_ r)
+  mf <*> mx = Cont_ (\return_ -> mf `with_` \f -> mx `with_` \x -> return_ (f x))
+
+instance Monad (Cont_ m) where
+  return r = Cont_ (\return_ -> return_ r)
+  ma >>= f = Cont_ (\return_ -> ma `with_` \a -> f a `with_` \b -> return_ b)
+
+instance (MonadIO m) => MonadIO (Cont_ m) where
+  liftIO m =
+    Cont_
+      (\return_ -> do
+         a <- liftIO m
+         return_ a)
+
+instance (Semigroup a) => Semigroup (Cont_ m a) where
+  (<>) = liftA2 (<>)
+
+instance (Functor m, Semigroup a, Monoid a) => Monoid (Cont_ m a) where
   mempty = pure mempty
   mappend = (<>)
