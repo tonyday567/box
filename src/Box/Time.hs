@@ -24,7 +24,7 @@ import Data.Time
 import Box.Cont
 import Box.Emitter
 import Box.Stream
-import Protolude hiding (threadDelay, STM(..))
+import Protolude hiding (threadDelay, STM)
 import qualified Streaming.Prelude as S
 import qualified Streaming as S
 import Control.Monad.Conc.Class as C

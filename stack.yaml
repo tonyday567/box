@@ -1,9 +1,6 @@
-resolver: nightly-2019-02-24
+resolver: lts-13.21
 
 packages:
   - .
 
-extra-deps:
-  - flow-1.0.12
-
-allow-newer: true
+extra-deps: []

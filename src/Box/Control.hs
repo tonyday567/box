@@ -7,10 +7,10 @@
 {-# LANGUAGE MonoLocalBinds #-}
 {-# LANGUAGE RankNTypes #-}
 {-# OPTIONS_GHC -Wall #-}
+{-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
 module Box.Control
   ( ControlComm(..)
-  -- , ControlComm(..)
   , ControlBox
   , ControlConfig(..)
   , consoleControlBox
