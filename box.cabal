@@ -56,7 +56,7 @@ library
     , concurrency
     , contravariant
     , data-default
-    , dejafu
+    , dejafu < 2
     , exceptions
     , flow
     , foldl
