@@ -1,7 +1,6 @@
 /.stack-work/
 TAGS
 /.DS_Store
-/box.cabal
 /src/.DS_Store
 /src/Etc/.DS_Store
 /.projectile
