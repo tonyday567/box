@@ -1,13 +1,5 @@
-cabal-version: 1.12
-
--- This file has been generated from package.yaml by hpack version 0.31.1.
---
--- see: https://github.com/sol/hpack
---
--- hash: 1e95b5568e907743dae547d71a55b1b3cd4d5845c032f31a2e81464d8a14b5b0
-
 name:           box
-version:        0.0.1.1
+version:        0.0.1.2
 synopsis:       boxes
 description:    concurrent, effectful boxes
 category:       project
@@ -19,6 +11,7 @@ copyright:      Tony Day (c) 2017
 license:        BSD3
 license-file:   LICENSE
 build-type:     Simple
+cabal-version: 1.12
 extra-source-files:
     stack.yaml
     readme.md
