@@ -83,7 +83,7 @@ executable box-test
     , concurrency
     , contravariant
     , data-default
-    , dejafu
+    , dejafu < 2
     , exceptions
     , flow
     , foldl
@@ -118,7 +118,7 @@ test-suite test
     , concurrency
     , contravariant
     , data-default
-    , dejafu
+    , dejafu < 2
     , doctest
     , exceptions
     , flow

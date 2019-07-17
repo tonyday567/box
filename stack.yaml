@@ -3,4 +3,5 @@ resolver: lts-13.21
 packages:
   - .
 
-extra-deps: []
+extra-deps:
+  - dejafu-1.12.0.0
