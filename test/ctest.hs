@@ -34,7 +34,7 @@ import Box.Transducer
 import Data.String
 import Protolude hiding (STM)
 import Test.DejaFu
-import Test.DejaFu.Conc
+import Test.DejaFu.Types
 import qualified Streaming.Prelude as S
 import System.Random
 import Control.Lens hiding ((:>), (.>), (<|), (|>))
@@ -94,7 +94,7 @@ exe1c2IO :: (MonadConc m) => Int -> m ([Int],[Int])
 exe1c2IO n = e1c2IO (toEmit (S.take n $ S.each [0..]))
 
 -- | test when the deterministic takes too long (which is almost always)
-t :: (MonadConc n, MonadIO n, Eq b, Show b) =>
+t :: (MonadConc n, MonadIO n, Eq b, Show b, MonadDejaFu n) =>
      String -> ConcT n b -> n Bool
 t l c = dejafuWay (randomly (mkStdGen 42) 1000) defaultMemType l alwaysSame c
 

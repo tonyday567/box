@@ -1,7 +1,6 @@
-resolver: lts-13.21
+resolver: lts-14.11
 
 packages:
   - .
 
-extra-deps:
-  - dejafu-1.12.0.0
+extra-deps: []

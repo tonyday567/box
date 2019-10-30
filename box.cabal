@@ -1,5 +1,5 @@
 name:           box
-version:        0.0.1.2
+version:        0.0.1.3
 synopsis:       boxes
 description:    concurrent, effectful boxes
 category:       project
@@ -49,7 +49,7 @@ library
     , concurrency
     , contravariant
     , data-default
-    , dejafu < 2
+    , dejafu
     , exceptions
     , flow
     , foldl
@@ -83,7 +83,7 @@ executable box-test
     , concurrency
     , contravariant
     , data-default
-    , dejafu < 2
+    , dejafu
     , exceptions
     , flow
     , foldl
@@ -118,7 +118,7 @@ test-suite test
     , concurrency
     , contravariant
     , data-default
-    , dejafu < 2
+    , dejafu
     , doctest
     , exceptions
     , flow
