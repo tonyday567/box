@@ -1,5 +1,5 @@
 name:           box
-version:        0.0.1.4
+version:        0.0.1.5
 synopsis:       boxes
 description:    concurrent, effectful boxes
 category:       project
