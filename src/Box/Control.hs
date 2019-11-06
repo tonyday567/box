@@ -29,7 +29,6 @@ import Control.Concurrent.Async
 import Control.Lens hiding ((|>))
 import Control.Monad
 import Data.Data
-import Flow
 import GHC.Generics
 import Protolude hiding ((.), STM)
 import Text.Read (readMaybe)
@@ -150,4 +149,4 @@ testBox = cb
 
 timeOut :: Double -> ControlBox m
 timeOut t =
-  Box <$> mempty <*> ((lift (sleep t) >> S.yield Stop) |> toEmit)
+  Box <$> mempty <*> ((lift (sleep t) >> S.yield Stop) & toEmit)

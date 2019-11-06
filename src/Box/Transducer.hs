@@ -25,7 +25,6 @@ import Box.Committer
 import Box.Cont
 import Box.Emitter
 import Box.Stream
-import Flow
 import qualified Pipes
 import qualified Pipes.Prelude as Pipes
 import Protolude hiding ((.), (<>))
@@ -61,12 +60,12 @@ asPipe p s = ((s & Pipes.unfoldr S.next) Pipes.>-> p) & S.unfoldr Pipes.next
 etc :: (MonadConc m) => s -> Transducer s a b -> Cont m (Box (C.STM m) b a) -> m s
 etc st t box =
   with box $ \(Box c e) ->
-    (e |> toStream |> transduce t |> fromStream) c |> flip execStateT st
+    (e & toStream & transduce t & fromStream) c & flip execStateT st
 
 etcM :: (MonadConc m, MonadBase m m) => s -> Transducer s a b -> Cont m (Box m b a) -> m s
 etcM st t box =
   with box $ \(Box c e) ->
-    (liftE' e |> toStreamM |> transduce t |> fromStreamM) (liftC' c) |> flip execStateT st
+    (liftE' e & toStreamM & transduce t & fromStreamM) (liftC' c) & flip execStateT st
   where
     liftC' c = Committer $ liftBase . commit c
     liftE' = Emitter . liftBase . emit

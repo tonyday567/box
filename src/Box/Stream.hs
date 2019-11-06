@@ -29,8 +29,6 @@ import Box.Committer
 import Box.Cont
 import Box.Emitter
 import Box.Queue
--- import Box.Transducer
-import Flow
 import Streaming (Of(..), Stream)
 import qualified Control.Foldl as L
 import qualified Streaming.Prelude as S
@@ -65,7 +63,7 @@ toEmit s = Cont (queueE (fromStream s))
 -- todo: look at biases
 queueStream ::
      (MonadConc m) => Stream (Of a) m () -> Cont m (Stream (Of a) m ())
-queueStream i = Cont $ \o -> queueE (fromStream i) (toStream .> o)
+queueStream i = Cont $ \o -> queueE (fromStream i) (toStream >>> o)
 
 -- | turn an emitter into a stream
 toStream :: (MonadConc m) => Emitter (STM m) a -> Stream (Of a) m ()

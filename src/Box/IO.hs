@@ -43,7 +43,6 @@ import Box.Emitter
 import Box.Plugs
 import Box.Stream
 import Box.Transducer
-import Flow
 import Protolude hiding ((.), (<>), STM)
 import Streaming (Of(..), Stream)
 import qualified Streaming.Internal as S
@@ -69,7 +68,7 @@ cStdin' = forever . cStdin_
 
 -- | a Cont stdin emitter
 eStdin :: Int -> Cont IO (Emitter (STM IO) Text)
-eStdin n = cStdin n |> emitPlug
+eStdin n = cStdin n & emitPlug
 
 -- | read from console, throwing away read errors
 readStdin :: Read a => Cont IO (Emitter (STM IO) a)
@@ -105,7 +104,7 @@ eStdout' = forever . eStdout_
 
 -- | a Cont stdout committer
 cStdout :: Print a => Int -> Cont IO (Committer (STM IO) a)
-cStdout n = eStdout n |> commitPlug
+cStdout n = eStdout n & commitPlug
 
 -- | show to stdout
 showStdout :: Show a => Cont IO (Committer (STM IO) a)
@@ -119,7 +118,7 @@ consolePlug n = boxPlug (eStdout n) (cStdin n)
 -- * file operations
 -- | emit lines from a file
 emitLines :: FilePath -> Cont IO (Emitter (STM IO) Text)
-emitLines filePath = Cont (withFile filePath ReadMode) >>= fromHandle .> toEmit
+emitLines filePath = Cont (withFile filePath ReadMode) >>= (fromHandle >>> toEmit)
   where
     fromHandle :: Handle -> Stream (Of Text) IO ()
     fromHandle h =
@@ -130,7 +129,7 @@ emitLines filePath = Cont (withFile filePath ReadMode) >>= fromHandle .> toEmit
 -- | commit lines to a file
 commitLines :: FilePath -> Cont IO (Committer (STM IO) Text)
 commitLines filePath =
-  Cont (withFile filePath WriteMode) >>= toHandle .> toCommit
+  Cont (withFile filePath WriteMode) >>= (toHandle >>> toCommit)
   where
     toHandle h = loop
       where
