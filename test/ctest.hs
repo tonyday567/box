@@ -319,7 +319,7 @@ resultCommitter = Committer $ \a -> do
   pure True
 
 -- boxCount' :: (MonadState StateExs m, MonadConc m) => Int -> Box m Int Int
-boxCount' n = Box (zoom #result resultCommitter) (zoom #count (countEmitter n))
+-- boxCount' n = Box (zoom #result resultCommitter) (zoom #count (countEmitter n))
 
 exs :: (MonadConc m) => Int -> m [Int]
 exs n = do
