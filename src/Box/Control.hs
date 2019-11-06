@@ -13,6 +13,7 @@ module Box.Control
   ( ControlComm(..)
   , ControlBox
   , ControlConfig(..)
+  , defaultControlConfig
   , consoleControlBox
   , parseControlComms
   , controlBox
@@ -28,8 +29,6 @@ import Control.Concurrent.Async
 import Control.Lens hiding ((|>))
 import Control.Monad
 import Data.Data
-import Data.Default
--- import Data.IORef
 import Flow
 import GHC.Generics
 import Protolude hiding ((.), STM)
@@ -59,8 +58,8 @@ data ControlConfig
   | AllowDeath
   deriving (Show, Eq)
 
-instance Default ControlConfig where
-  def = AllowDeath
+defaultControlConfig :: ControlConfig
+defaultControlConfig = AllowDeath
 
 consoleControlBox :: ControlBox IO
 consoleControlBox =
@@ -73,8 +72,8 @@ consoleControlBox =
 
 parseControlComms :: A.Parser ControlComm
 parseControlComms =
-  A.string "q" *> return Stop <|> A.string "s" *> return Start <|>
-  A.string "x" *> return Kill <|> do
+  A.string "q" $> Stop <|> A.string "s" $> Start <|>
+  A.string "x" $> Kill <|> do
     res <- readMaybe . Text.unpack <$> A.takeText
     case res of
       Nothing -> mzero
@@ -116,7 +115,7 @@ controlBox cfg app (Box c e) = do
                   go ref
             Reset -> do
               a <- C.readIORef ref
-              when (not $ isNothing a) (cancel' ref)
+              unless (isNothing a) (cancel' ref)
               _ <- start ref c
               go ref
             _ -> go ref

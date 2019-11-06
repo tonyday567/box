@@ -111,7 +111,7 @@ keeps k (Emitter emit_) = Emitter emit_'
 
 -- | attoparsec parse emitter
 eParse :: (Functor m) => A.Parser a -> Emitter m Text -> Emitter m (Either Text a)
-eParse parser e = (either (Left . Text.pack) Right . A.parseOnly parser) <$> e
+eParse parser e = either (Left . Text.pack) Right . A.parseOnly parser <$> e
 
 -- | read parse emitter
 eRead ::

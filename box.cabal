@@ -1,5 +1,5 @@
 name:           box
-version:        0.0.1.3
+version:        0.0.1.4
 synopsis:       boxes
 description:    concurrent, effectful boxes
 category:       project
@@ -49,18 +49,13 @@ library
     , concurrency
     , contravariant
     , data-default
-    , dejafu
     , exceptions
     , flow
     , foldl
-    , generic-lens
     , lens
-    , mmorph
     , pipes
     , profunctors
     , protolude
-    , random
-    , stm
     , streaming
     , text
     , time
@@ -76,30 +71,17 @@ executable box-test
       test
   ghc-options: -funbox-strict-fields -fforce-recomp -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      async
-    , attoparsec
-    , base >=4.7 && <5
+    base >=4.7 && <5
     , box
     , concurrency
-    , contravariant
-    , data-default
     , dejafu
-    , exceptions
-    , flow
-    , foldl
     , generic-lens
     , lens
-    , mmorph
-    , pipes
-    , profunctors
     , protolude
     , random
-    , stm
     , streaming
     , text
-    , time
     , transformers
-    , transformers-base
   default-language: Haskell2010
 
 test-suite test
@@ -111,29 +93,7 @@ test-suite test
       test
   ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints
   build-depends:
-      async
-    , attoparsec
-    , base >=4.7 && <5
-    , box
-    , concurrency
-    , contravariant
-    , data-default
-    , dejafu
+    base >=4.7 && <5
     , doctest
-    , exceptions
-    , flow
-    , foldl
-    , generic-lens
-    , lens
-    , mmorph
-    , pipes
-    , profunctors
     , protolude
-    , random
-    , stm
-    , streaming
-    , text
-    , time
-    , transformers
-    , transformers-base
   default-language: Haskell2010

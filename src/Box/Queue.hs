@@ -180,7 +180,7 @@ withQM :: (MonadConc m) =>
 withQM q spawner cio eio =
   C.bracket
     (spawner q)
-    (\(_, seal) -> seal)
+    snd
     (\(box, seal) ->
        concurrently
          (cio (committer box) `C.finally` seal)
@@ -196,7 +196,7 @@ withQMLog :: (MonadConc m, MonadIO m) =>
 withQMLog q spawner cio eio =
   C.bracket
     (spawner q)
-    (\(_, seal) -> seal)
+    snd
     (\(box, seal) ->
        concurrently
          (cio (committer box) `C.finally` (putStrLn ("committer sealed" :: Text) >> seal))
