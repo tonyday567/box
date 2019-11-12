@@ -1,7 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -19,14 +18,12 @@ module Box.Plugs
   , boxForgetPlug
   ) where
 
-import Control.Category
 import Box.Committer
 import Box.Cont
 import Box.Box
 import Box.Queue
 import Box.Emitter
 import GHC.Conc
-import Protolude hiding ((.), (<>))
 
 -- * plugs
 -- | hook an emitter action to a queue, creating a committer continuation

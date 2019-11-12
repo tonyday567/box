@@ -1,7 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -18,7 +17,7 @@
 --
 module Main where
 
-import Control.Category (id)
+import Prelude
 import Control.Monad.Conc.Class as C
 import Control.Concurrent.Classy.STM as C
 import Box.Box
@@ -31,8 +30,10 @@ import Box.IO
 import Box.Queue
 import Box.Stream
 import Box.Transducer
-import Data.String
-import Protolude hiding (STM)
+import Control.Monad.IO.Class
+import Data.Text (Text)
+import qualified Data.Text as Text
+import qualified Data.Text.IO as Text
 import Test.DejaFu
 import Test.DejaFu.Types
 import qualified Streaming.Prelude as S
@@ -42,6 +43,9 @@ import Control.Concurrent.Classy.Async as C
 import qualified Control.Monad.Trans.State as Trans
 import Data.Generics.Labels ()
 import Data.Generics.Product
+import GHC.Generics
+import Control.Monad.State.Lazy
+import Control.Applicative
 
 -- | the test box is a pure list emitter into an IORef appending list
 testBox :: (MonadConc m) => Int -> m (Cont m (Box (STM m) Int Int), m [Int])
@@ -157,7 +161,7 @@ exc' n = do
   fuse (pure . pure) (Box <$> (liftC <$> c1) <*> e1)
   fuse (pure . pure) (Box <$> (liftC <$> c2) <*> e2)
   eres <- readIORef eref
-  putStrLn $ "eref: " <> (show eres :: Text)
+  liftIO $ Text.putStrLn $ "eref: " <> Text.pack (show eres)
   (,) <$> r1 <*> r2
 
 -- | a broadcaster 
@@ -168,16 +172,16 @@ newtype Broadcaster' m a = Broadcaster'
 -- | create a (broadcaster, committer)
 broadcast' :: (Show a, MonadConc m, MonadIO m) => m (Broadcaster' m a, Committer m a)
 broadcast' = do
-  ref <- C.atomically $ newTVar mempty
+  ref <- C.atomically $ C.newTVar mempty
   let com = Committer $ \a -> do
-        putStrLn $ "broadcaster': " <> (show a :: Text)
-        c <- C.atomically $ readTVar ref
+        liftIO $ Text.putStrLn $ "broadcaster': " <> Text.pack (show a)
+        c <- C.atomically $ C.readTVar ref
         commit c a
   pure (Broadcaster' ref, com)
 
 -- | subscribe to a broadcaster
-subscribe' :: (Show a, MonadIO m, MonadConc m) => Broadcaster' m a -> Cont m (Emitter m a)
-subscribe' (Broadcaster' tvar) = Cont $ \e -> queueELog cio e
+subscribe' :: (MonadIO m, MonadConc m) => Broadcaster' m a -> Cont m (Emitter m a)
+subscribe' (Broadcaster' tvar) = Cont $ \e -> queueEM cio e
   where
     cio c = C.atomically $ modifyTVar' tvar (mappend c)
 
@@ -188,9 +192,9 @@ fuse_' e c = go
   where
     go = do
       a <- emit e
-      putStrLn $ "fuse_' emit: " <> (show a :: Text)
+      liftIO $ Text.putStrLn $ "fuse_' emit: " <> Text.pack (show a)
       c' <- maybe (pure False) (commit c) a
-      putStrLn $ "fuse_' commit: " <> (show c' :: Text)
+      liftIO $ Text.putStrLn $ "fuse_' commit: " <> Text.pack (show c')
       when c' go
 
 fuse' :: (Show b, MonadIO m) => (a -> m (Maybe b)) -> Cont m (Box m b a) -> m ()
@@ -252,7 +256,7 @@ counter :: (MonadState Int m) => Int -> StateT Int m (Emitter m Int)
 counter n =
   pure $
     Emitter $ do
-        a <- Protolude.get
+        a <- Control.Monad.State.Lazy.get
         case a < n of
           False -> pure Nothing
           True -> do

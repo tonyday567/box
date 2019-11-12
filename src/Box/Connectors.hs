@@ -1,8 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -20,23 +18,22 @@ module Box.Connectors
   , fuseEmit
   , fuseEmitM
   , fuseCommit
+  , fuseCommitM
   , emerge
   , emergeM
   , splitCommit
+  , splitCommitSTM
   , contCommit
   ) where
 
-import Control.Category
-import Control.Lens hiding ((:>), (.>), (<|), (|>))
-import Data.Semigroup hiding (First, getFirst)
 import Box.Box
 import Box.Queue
 import Box.Committer
 import Box.Cont
 import Box.Emitter
-import Protolude hiding (STM, (.), (<>))
 import Control.Monad.Conc.Class as C
 import Control.Concurrent.Classy.Async as C
+import Control.Monad
 
 -- * primitives
 -- | fuse an emitter directly to a committer
@@ -87,6 +84,10 @@ forkEmit e c =
 fuseCommit :: (MonadConc m) => Committer (STM m) a -> Cont m (Committer (STM m) a)
 fuseCommit c = Cont $ \caction -> queueC caction (`fuseSTM_` c)
 
+-- | fuse a committer to a buffer
+fuseCommitM :: (MonadConc m) => Committer m a -> Cont m (Committer m a)
+fuseCommitM c = Cont $ \caction -> queueCM caction (`fuse_` c)
+
 -- | fuse an emitter to a buffer
 fuseEmit :: (MonadConc m) => Emitter (STM m) a -> Cont m (Emitter (STM m) a)
 fuseEmit e = Cont $ \eaction -> queueE (fuseSTM_ e) eaction
@@ -126,27 +127,36 @@ emergeM e =
         (queueEM (fuse_ (fst e')) eaction)
         (queueEM (fuse_ (snd e')) eaction)
 
--- | merge two committers
+-- | split a committer (STM m)
 --
--- not working
---
-splitCommit :: (MonadConc m) =>
+splitCommitSTM :: (MonadConc m) =>
      Cont m (Committer (STM m) a)
   -> Cont m (Either (Committer (STM m) a) (Committer (STM m) a))
-splitCommit c =
+splitCommitSTM c =
   Cont $ \kk ->
     with c $ \c' ->
-      fst <$>
-      C.concurrently
+      concurrentlyLeft
         (queueC (kk . Left) (`fuseSTM_` c'))
         (queueC (kk . Right) (`fuseSTM_` c'))
 
--- | a failed attempt to understand the either continuation style
-contCommit :: Either (Committer m Text) (Committer m Text) -> Committer m Text
-contCommit ec =
+-- | split a committer
+--
+splitCommit :: (MonadConc m) =>
+     Cont m (Committer m a)
+  -> Cont m (Either (Committer m a) (Committer m a))
+splitCommit c =
+  Cont $ \kk ->
+    with c $ \c' ->
+      concurrentlyLeft
+        (queueCM (kk . Left) (`fuse_` c'))
+        (queueCM (kk . Right) (`fuse_` c'))
+
+-- | use a split committer
+contCommit :: Either (Committer m a) (Committer m b) -> (Committer m a -> Committer m b) -> Committer m b
+contCommit ec f =
   Committer $ \a ->
     case ec of
-      Left lc -> commit (contramap ("left " <>) lc) a
+      Left lc -> commit (f lc) a
       Right rc -> commit rc a
 
 -- | a box modifier that feeds commits back to the emitter

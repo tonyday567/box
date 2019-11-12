@@ -1,6 +1,5 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
@@ -17,17 +16,15 @@ module Box.Time
   , emitStamp
   ) where
 
-import Control.Applicative
-import Control.Monad
-import Data.Maybe
 import Data.Time
 import Box.Cont
 import Box.Emitter
 import Box.Stream
-import Protolude hiding (threadDelay, STM)
 import qualified Streaming.Prelude as S
 import qualified Streaming as S
 import Control.Monad.Conc.Class as C
+import Control.Monad.IO.Class
+import Control.Monad.Trans.Class
 
 -- | sleep for x seconds
 sleep :: (MonadConc m) => Double -> m ()

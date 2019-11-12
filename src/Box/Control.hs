@@ -1,56 +1,63 @@
-{-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MonoLocalBinds #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# OPTIONS_GHC -Wall #-}
 {-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
 module Box.Control
-  ( ControlComm(..)
-  , ControlBox
-  , ControlConfig(..)
-  , defaultControlConfig
-  , consoleControlBox
-  , parseControlComms
-  , controlBox
-  , runControlBox
-  , testBox
-  , timeOut
-  ) where
+  ( ControlRequest (..),
+    ControlResponse (..),
+    ControlBox,
+    ControlConfig (..),
+    defaultControlConfig,
+    consoleControlBox,
+    parseControlRequest,
+    controlBox,
+    -- runControlBox,
+    testBox,
+    timeOut,
+  )
+where
 
 import Box
 import Control.Applicative
-import Control.Category
 import Control.Concurrent.Async
 import Control.Lens hiding ((|>))
 import Control.Monad
-import Data.Data
-import GHC.Generics
-import Protolude hiding ((.), STM)
-import Text.Read (readMaybe)
-import qualified Data.Attoparsec.Text as A
-import qualified Data.Text as Text
-import qualified Streaming.Prelude as S
 import Control.Monad.Conc.Class as C
+import qualified Data.Attoparsec.Text as A
+import Data.Data
+import qualified Data.Text as Text
+import qualified Data.Text.IO as Text
+import Data.Text (Text)
+import GHC.Generics
+import qualified Streaming.Prelude as S
+import Text.Read (readMaybe)
+import Data.Functor
+import Control.Monad.Trans.Class
+import Data.Bool
+import Data.Maybe
 
-data ControlComm
-  = Ready -- ready for comms
-  | Check -- check for existence
-  | Died -- died (of its own accord)
+data ControlRequest
+  = Check -- check for existence
   | Stop -- stop (without shutting down)
-  | Kill -- stop and quit (& cancel thread)
-  | ShutDown -- successfully Killed
+  | Quit -- stop, quit & cancel thread
   | Start -- start (if not yet started)
   | Reset -- stop and start (potentially cancelling a previous instance)
+  | Kill -- immediately exit
+  deriving (Show, Read, Eq, Data, Typeable, Generic)
+
+data ControlResponse
+  = ShutDown -- action died
   | On Bool -- are we live?
   | Log Text
   deriving (Show, Read, Eq, Data, Typeable, Generic)
 
-type ControlBox m = (MonadConc m) => Cont m (Box (STM m) ControlComm ControlComm)
+type ControlBox m = (MonadConc m) => Cont m (Box (STM m) ControlResponse ControlRequest)
 
 data ControlConfig
   = KeepAlive Double
@@ -62,31 +69,39 @@ defaultControlConfig = AllowDeath
 
 consoleControlBox :: ControlBox IO
 consoleControlBox =
-  Box <$>
-  (contramap show <$>
-   (cStdout 1000 :: Cont IO (Committer (STM IO) Text))) <*>
-  (emap (pure . either (const Nothing) Just) <$>
-   (eParse parseControlComms <$>
-    eStdin 1000))
+  Box
+    <$> ( contramap (Text.pack . show)
+            <$> (cStdout 1000 :: Cont IO (Committer (STM IO) Text))
+        )
+    <*> ( emap (pure . either (const Nothing) Just)
+            <$> ( eParse parseControlRequest
+                    <$> eStdin 1000
+                )
+        )
 
-parseControlComms :: A.Parser ControlComm
-parseControlComms =
-  A.string "q" $> Stop <|> A.string "s" $> Start <|>
-  A.string "x" $> Kill <|> do
-    res <- readMaybe . Text.unpack <$> A.takeText
-    case res of
-      Nothing -> mzero
-      Just a -> return a
+parseControlRequest :: A.Parser ControlRequest
+parseControlRequest =
+  A.string "q" $> Stop
+    <|> A.string "s" $> Start
+    <|> A.string "x" $> Quit
+    <|> A.string "c" $> Check
+    <|> A.string "r" $> Reset
+    <|> do
+      res <- readMaybe . Text.unpack <$> A.takeText
+      case res of
+        Nothing -> mzero
+        Just a -> return a
 
 -- | an effect that can be started and stopped
--- committer is an existence test
--- controlBox :: (MonadConc m) => ControlConfig -> m () -> ControlBox m
-controlBox
-  :: ControlConfig
-     -> IO a -> Box (STM IO) ControlComm ControlComm -> IO Bool
-controlBox cfg app (Box c e) = do
+controlBox ::
+  IO a ->
+  Box (STM IO) ControlResponse ControlRequest ->
+  IO ()
+controlBox app (Box c e) = do
   ref' <- C.newIORef Nothing
-  go ref'
+  _ <- C.atomically (commit c (On False))
+  _ <- go ref'
+  Text.putStrLn ("after go ref'" :: Text)
   where
     go ref = do
       msg <- C.atomically $ emit e
@@ -103,49 +118,30 @@ controlBox cfg app (Box c e) = do
               a <- C.readIORef ref
               when (isNothing a) (void $ start ref c)
               go ref
-            Stop -> cancel' ref >> go ref
-            Kill -> cancel' ref >> C.atomically (commit c ShutDown)
-            Died ->
-              case cfg of
-                AllowDeath -> C.atomically $ commit c ShutDown
-                KeepAlive x -> do
-                  sleep x
-                  _ <- C.atomically $ commit c Start
-                  go ref
+            Stop -> cancel' ref c >> go ref
+            Quit -> cancel' ref c >> C.atomically (commit c ShutDown)
             Reset -> do
               a <- C.readIORef ref
-              unless (isNothing a) (cancel' ref)
+              unless (isNothing a) (void $ cancel' ref c)
               _ <- start ref c
               go ref
             _ -> go ref
     start ref c' = do
-      a' <- async (app >> C.atomically (commit c' Died))
+      a' <- async (app >> C.atomically (commit c' (On False)))
       C.writeIORef ref (Just a')
-      C.atomically $ commit c' Ready
-    cancel' ref = do
+      C.atomically $ commit c' (On True)
+    cancel' ref c' = do
       mapM_ cancel =<< C.readIORef ref
       C.writeIORef ref Nothing
-
-runControlBox :: ControlConfig -> IO () -> IO ()
-runControlBox cfg action =
-  etc
-    ()
-    (Transducer $ \s -> s & S.takeWhile (/= ShutDown))
-    (boxForgetPlug (void <$> controlBox cfg action))
+      C.atomically $ commit c' (On False)
 
 -- | send Start, wait for a Ready signal, run action, wait x secs, then send Quit
-testBox :: IO Bool
+testBox :: IO ()
 testBox = cb
   where
     action =
-      sequence_ $
-      (\x -> putStrLn x >> sleep 1) . (show :: Integer -> Text) <$>
-      reverse [0 .. 10]
-    cb = with consoleControlBox (controlBox (KeepAlive 3) action)
-  -- buff (bounded 1)
-  -- ControlStart
-  -- ControlReady
-  -- ControlQuit
+      replicateM_ 3 (sleep 1 >> Text.putStrLn ("beep" :: Text))
+    cb = with consoleControlBox (controlBox action)
 
 timeOut :: Double -> ControlBox m
 timeOut t =

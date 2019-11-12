@@ -1,7 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -23,8 +22,6 @@ module Box.Stream
   , fromStreamM
   ) where
 
-import Control.Category
-
 import Box.Committer
 import Box.Cont
 import Box.Emitter
@@ -33,7 +30,7 @@ import Streaming (Of(..), Stream)
 import qualified Control.Foldl as L
 import qualified Streaming.Prelude as S
 import Control.Monad.Conc.Class as C
-import Protolude hiding ((<>), (.), STM, check, wait, cancel, atomically, withAsync, concurrently)
+import Control.Monad
 
 -- * streaming
 -- | create a committer from a stream consumer
@@ -63,7 +60,7 @@ toEmit s = Cont (queueE (fromStream s))
 -- todo: look at biases
 queueStream ::
      (MonadConc m) => Stream (Of a) m () -> Cont m (Stream (Of a) m ())
-queueStream i = Cont $ \o -> queueE (fromStream i) (toStream >>> o)
+queueStream i = Cont $ \o -> queueE (fromStream i) (o . toStream)
 
 -- | turn an emitter into a stream
 toStream :: (MonadConc m) => Emitter (STM m) a -> Stream (Of a) m ()

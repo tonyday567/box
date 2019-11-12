@@ -1,7 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -17,7 +16,8 @@ module Box.Transducer
   , asPipe
   ) where
 
-import Control.Category
+import Prelude hiding ((.), id)
+import Control.Category (Category(..))
 import Control.Lens hiding ((:>), (.>), (<|), (|>))
 import Control.Monad.Base (MonadBase, liftBase)
 import Box.Box
@@ -27,10 +27,10 @@ import Box.Emitter
 import Box.Stream
 import qualified Pipes
 import qualified Pipes.Prelude as Pipes
-import Protolude hiding ((.), (<>))
 import Streaming (Of(..), Stream)
 import qualified Streaming.Prelude as S
 import Control.Monad.Conc.Class as C
+import Control.Monad.Trans.State.Lazy
 
 -- | transduction
 -- [wiki](https://en.wikipedia.org/wiki/Transducer) says: "A transducer is a device that converts energy from one form to another." Translated to context, this Transducer converts a stream of type a to a stream of a different type.

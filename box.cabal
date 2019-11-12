@@ -53,7 +53,6 @@ library
     , lens
     , pipes
     , profunctors
-    , protolude
     , streaming
     , text
     , time
@@ -75,7 +74,7 @@ executable box-test
     , dejafu
     , generic-lens
     , lens
-    , protolude
+    , mtl
     , random
     , streaming
     , text
@@ -93,5 +92,4 @@ test-suite test
   build-depends:
     base >=4.7 && <5
     , doctest
-    , protolude
   default-language: Haskell2010

@@ -2,7 +2,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -16,13 +15,12 @@ module Box.Committer
   , handles
   ) where
 
-import Control.Category
 import Control.Lens hiding ((:>), (.>), (<|), (|>))
 import Data.Functor.Constant
 import Data.Functor.Contravariant.Divisible
-import Data.Semigroup hiding (First, getFirst)
-import Protolude hiding ((.), (<>), STM, atomically)
 import Control.Monad.Conc.Class as C
+import Data.Void (absurd)
+import Data.Monoid (First(..))
 
 -- | a Committer a "commits" values of type a. A Sink and a Consumer are some other metaphors for this.
 --

@@ -1,4 +1,3 @@
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# OPTIONS_GHC -Wall #-}
 
 module Box.Broadcast
@@ -14,7 +13,6 @@ import Box.Committer
 import Box.Cont
 import Box.Emitter
 import Box.Queue
-import Protolude hiding (STM, atomically, (.), (<>))
 import Control.Concurrent.Classy.STM as C
 import Control.Monad.Conc.Class as C
 

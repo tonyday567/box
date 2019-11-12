@@ -2,7 +2,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -19,13 +18,14 @@ module Box.Emitter
   , eParse
   ) where
 
-import Control.Category ((.))
 import Data.Functor.Constant
-import Data.Semigroup hiding (First, getFirst)
-import Protolude hiding ((.), (<>), STM, atomically)
 import qualified Data.Attoparsec.Text as A
 import qualified Data.Text as Text
+import Data.Text (Text)
 import Control.Monad.Conc.Class as C
+import Control.Applicative
+import Control.Monad
+import Data.Monoid
 
 -- | an `Emitter` "emits" values of type a. A Source & a Producer (of 'a's) are the two other alternative but overloaded metaphors out there.
 --
