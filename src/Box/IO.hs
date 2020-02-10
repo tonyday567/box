@@ -19,7 +19,11 @@ module Box.IO
     eStdoutM,
     eStdout',
     cStdout,
+    cStdout',
+    eStdin',
     showStdout,
+    getLine,
+    putLine,
     consolePlug,
     emitLines,
     commitLines,
@@ -51,7 +55,8 @@ import qualified Data.Text.IO as Text
 import Streaming (Of (..), Stream)
 import qualified Streaming.Internal as S
 import qualified Streaming.Prelude as S
-import System.IO
+import System.IO hiding (getLine)
+import Prelude hiding (getLine)
 
 -- * console
 
@@ -109,9 +114,40 @@ eStdout' = forever . eStdout_
 cStdout :: Int -> Cont IO (Committer (STM IO) Text)
 cStdout n = eStdout n & commitPlug
 
+-- | a Cont stdout committer
+cStdout' :: Cont IO (Committer (STM IO) Text)
+cStdout' = eStdout' & commitPlug
+
+-- | a Cont stdin emitter
+eStdin' :: Cont IO (Emitter (STM IO) Text)
+eStdin' = cStdin' & emitPlug
+
 -- | show to stdout
 showStdout :: Show a => Cont IO (Committer (STM IO) a)
 showStdout = contramap (Text.pack . show) <$> (cStdout 1000 :: Cont IO (Committer (STM IO) Text))
+
+-- | Get a single line from a handle.
+getLine_ :: Handle -> Committer (STM IO) Text -> IO ()
+getLine_ h c = do
+  a <- Text.hGetLine h
+  void $ C.atomically $ commit c a
+
+-- | Get lines from a handle forever.
+getLine :: Handle -> Committer (STM IO) Text -> IO ()
+getLine h = forever . getLine_ h
+
+-- | Put a single line to a handle.
+putLine_ :: Handle -> Emitter (STM IO) Text -> IO ()
+putLine_ h e = do
+  a <- C.atomically $ emit e
+  case a of
+    Nothing -> pure ()
+    Just a' -> Text.hPutStrLn h a'
+
+-- | a forever getLine committer action
+putLine :: Handle -> Emitter (STM IO) Text -> IO ()
+putLine h = forever . putLine_ h
+
 
 -- | console box
 -- > etc () (Trans $ \s -> s & S.takeWhile (/="q") & S.map ("echo: " <>)) (console 5)

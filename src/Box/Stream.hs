@@ -8,35 +8,35 @@
 {-# OPTIONS_GHC -fno-warn-type-defaults #-}
 
 -- | Streaming functionality
---
-
 module Box.Stream
-  ( toStream
-  , fromStream
-  , toCommit
-  , toCommitFold
-  , toCommitSink
-  , toEmit
-  , queueStream
-  , toStreamM
-  , fromStreamM
-  ) where
+  ( toStream,
+    fromStream,
+    toCommit,
+    toCommitFold,
+    toCommitSink,
+    toEmit,
+    queueStream,
+    toStreamM,
+    fromStreamM,
+  )
+where
 
 import Box.Committer
 import Box.Cont
 import Box.Emitter
 import Box.Queue
-import Streaming (Of(..), Stream)
 import qualified Control.Foldl as L
-import qualified Streaming.Prelude as S
-import Control.Monad.Conc.Class as C
 import Control.Monad
+import Control.Monad.Conc.Class as C
+import Streaming (Of (..), Stream)
+import qualified Streaming.Prelude as S
 
 -- * streaming
+
 -- | create a committer from a stream consumer
 toCommit :: (MonadConc m) => (Stream (Of a) m () -> m r) -> Cont m (Committer (STM m) a)
 toCommit f =
-  Cont (\c -> queueC c (\(Emitter o) -> f . toStream . Emitter $ o))
+  Cont (\c -> queueC' c (\(Emitter o) -> f . toStream . Emitter $ o))
 
 -- | create a committer from a fold
 toCommitFold :: (MonadConc m) => L.FoldM m a () -> Cont m (Committer (STM m) a)
@@ -54,13 +54,13 @@ toCommitSink sink = toCommitFold (L.FoldM step begin done)
 
 -- | create an emitter from a stream
 toEmit :: (MonadConc m) => Stream (Of a) m () -> Cont m (Emitter (STM m) a)
-toEmit s = Cont (queueE (fromStream s))
+toEmit s = Cont (queueE' (fromStream s))
 
 -- | insert a queue into a stream (left biased collapse)
 -- todo: look at biases
 queueStream ::
-     (MonadConc m) => Stream (Of a) m () -> Cont m (Stream (Of a) m ())
-queueStream i = Cont $ \o -> queueE (fromStream i) (o . toStream)
+  (MonadConc m) => Stream (Of a) m () -> Cont m (Stream (Of a) m ())
+queueStream i = Cont $ \o -> queueE' (fromStream i) (o . toStream)
 
 -- | turn an emitter into a stream
 toStream :: (MonadConc m) => Emitter (STM m) a -> Stream (Of a) m ()
@@ -85,5 +85,3 @@ fromStreamM s c = go s
       forM_ eNxt $ \(a, str') -> do
         continue <- commit c a
         when continue (go str')
-
-

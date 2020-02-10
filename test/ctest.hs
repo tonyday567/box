@@ -181,7 +181,7 @@ broadcast' = do
 
 -- | subscribe to a broadcaster
 subscribe' :: (MonadIO m, MonadConc m) => Broadcaster' m a -> Cont m (Emitter m a)
-subscribe' (Broadcaster' tvar) = Cont $ \e -> queueEM cio e
+subscribe' (Broadcaster' tvar) = Cont $ \e -> queueEM' cio e
   where
     cio c = C.atomically $ modifyTVar' tvar (mappend c)
 
@@ -248,9 +248,8 @@ splitCommitM c =
     with c $ \c' ->
       fst <$>
       C.concurrently
-        (queueCM (kk . Left) (`fuse_` c'))
-        (queueCM (kk . Right) (`fuse_` c'))
-
+        (queueCM' (kk . Left) (`fuse_` c'))
+        (queueCM' (kk . Right) (`fuse_` c'))
 
 counter :: (MonadState Int m) => Int -> StateT Int m (Emitter m Int)
 counter n =

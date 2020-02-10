@@ -9,27 +9,26 @@
 -- | Boxes that `emit`, `transduce` & `commit`
 --
 -- This library follows the ideas and code from [pipes-concurrency](https://hackage.haskell.org/package/pipes-concurrency) and [mvc](https://hackage.haskell.org/package/mvc) but with some polymorphic tweaks and definitively more pretentious names.
---
---
 module Box
   ( -- $setup
     -- $commit
     -- $emit
     -- $transduce
-    module Box.Box
-  , module Box.Broadcast
-  , module Box.Committer
-  , module Box.Connectors
-  , module Box.Cont
-  , module Box.Emitter
-  , module Box.IO
-  , module Box.Plugs
-  , module Box.Queue
-  , module Box.Stream
-  , module Box.Time
-  , module Box.Transducer
-  , (&)
-  ) where
+    module Box.Box,
+    module Box.Broadcast,
+    module Box.Committer,
+    module Box.Connectors,
+    module Box.Cont,
+    module Box.Emitter,
+    module Box.IO,
+    module Box.Plugs,
+    module Box.Queue,
+    module Box.Stream,
+    module Box.Time,
+    module Box.Transducer,
+    (&),
+  )
+where
 
 import Box.Box
 import Box.Broadcast
@@ -139,14 +138,12 @@ import Control.Lens ((&))
 -- 'y'
 -- 'c'
 -- 'x'
---
 
 -- $transduce
 --
 -- >>> etc () transducer' box'
 -- echo: hi
 -- echo: bye
---
 
 -- | broadcasting
 --
@@ -154,4 +151,3 @@ import Control.Lens ((&))
 --
 -- > (funn, fem) <- C.atomically funnel
 -- >
-

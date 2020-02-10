@@ -1,13 +1,15 @@
 {-# OPTIONS_GHC -Wall #-}
 
+-- | This module is experimental and may not work.
 module Box.Broadcast
-  ( Broadcaster(..)
-  , broadcast
-  , subscribe
-  , Funneler(..)
-  , funnel
-  , widen
-  ) where
+  ( Broadcaster (..),
+    broadcast,
+    subscribe,
+    Funneler (..),
+    funnel,
+    widen,
+  )
+where
 
 import Box.Committer
 import Box.Cont
@@ -16,10 +18,11 @@ import Box.Queue
 import Control.Concurrent.Classy.STM as C
 import Control.Monad.Conc.Class as C
 
--- | a broadcaster 
-newtype Broadcaster m a = Broadcaster
-  { unBroadcast :: TVar m (Committer m a)
-  }
+-- | a broadcaster
+newtype Broadcaster m a
+  = Broadcaster
+      { unBroadcast :: TVar m (Committer m a)
+      }
 
 -- | create a (broadcaster, committer)
 broadcast :: (MonadSTM stm) => stm (Broadcaster stm a, Committer stm a)
@@ -32,14 +35,15 @@ broadcast = do
 
 -- | subscribe to a broadcaster
 subscribe :: (MonadConc m) => Broadcaster (STM m) a -> Cont m (Emitter (STM m) a)
-subscribe (Broadcaster tvar) = Cont $ \e -> queueE cio e
+subscribe (Broadcaster tvar) = Cont $ \e -> queueE' cio e
   where
     cio c = atomically $ modifyTVar' tvar (mappend c)
 
 -- | a funneler
-newtype Funneler m a = Funneler
-  { unFunnel :: TVar m (Emitter m a)
-  }
+newtype Funneler m a
+  = Funneler
+      { unFunnel :: TVar m (Emitter m a)
+      }
 
 -- | create a (funneler, emitter)
 funnel :: (MonadSTM stm) => stm (Funneler stm a, Emitter stm a)
@@ -54,4 +58,4 @@ funnel = do
 -- | widen to a funneler
 widen :: (MonadConc m) => Funneler (STM m) a -> Cont m (Committer (STM m) a)
 widen (Funneler tvar) =
-  Cont $ \c -> queueC c $ \e -> atomically $ modifyTVar' tvar (mappend e)
+  Cont $ \c -> queueC' c $ \e -> atomically $ modifyTVar' tvar (mappend e)

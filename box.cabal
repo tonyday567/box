@@ -1,5 +1,5 @@
 name:           box
-version:        0.1.0
+version:        0.2.0
 synopsis:       boxes
 description:    concurrent, effectful boxes
 category:       project
@@ -52,12 +52,24 @@ library
     , foldl
     , lens
     , pipes
+    , process
     , profunctors
     , streaming
     , text
     , time
     , transformers
     , transformers-base
+  default-language: Haskell2010
+
+executable box-echo
+  main-is: echo.hs
+  hs-source-dirs:
+      app
+  ghc-options: -funbox-strict-fields -fforce-recomp -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+    base >=4.7 && <5
+    , box
+    , text
   default-language: Haskell2010
 
 executable box-test
@@ -93,3 +105,4 @@ test-suite test
     base >=4.7 && <5
     , doctest
   default-language: Haskell2010
+

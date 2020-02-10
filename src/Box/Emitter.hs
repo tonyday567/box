@@ -1,49 +1,54 @@
-{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wall #-}
 {-# OPTIONS_GHC -fno-warn-type-defaults #-}
 
 -- | `emit`
 module Box.Emitter
-  ( Emitter(..)
-  , liftE
-  , emap
-  , keeps
-  , eRead
-  , eParse
-  ) where
+  ( Emitter (..),
+    liftE,
+    emap,
+    keeps,
+    eRead,
+    eParse,
+  )
+where
 
-import Data.Functor.Constant
-import qualified Data.Attoparsec.Text as A
-import qualified Data.Text as Text
-import Data.Text (Text)
-import Control.Monad.Conc.Class as C
 import Control.Applicative
 import Control.Monad
+import Control.Monad.Conc.Class as C
+import qualified Data.Attoparsec.Text as A
+import Data.Functor.Constant
 import Data.Monoid
+import qualified Data.Text as Text
+import Data.Text (Text)
 
--- | an `Emitter` "emits" values of type a. A Source & a Producer (of 'a's) are the two other alternative but overloaded metaphors out there.
+-- | an `Emitter` "emits" values of type a. A Source & a Producer (of a's) are the two other alternative but overloaded metaphors out there.
 --
--- An Emitter 'reaches into itself' for the value to emit, where itself is an opaque thing from the pov of usage.  An Emitter is named for its main action: it emits.
---
-newtype Emitter m a = Emitter
-  { emit :: m (Maybe a)
-  }
+-- An Emitter "reaches into itself" for the value to emit, where itself is an opaque thing from the pov of usage.  An Emitter is named for its main action: it emits.
+newtype Emitter m a
+  = Emitter
+      { emit :: m (Maybe a)
+      }
 
 instance (Functor m) => Functor (Emitter m) where
   fmap f m = Emitter (fmap (fmap f) (emit m))
 
 instance (Applicative m) => Applicative (Emitter m) where
+
   pure r = Emitter (pure (pure r))
+
   mf <*> mx = Emitter ((<*>) <$> emit mf <*> emit mx)
 
 instance (Monad m) => Monad (Emitter m) where
+
   return r = Emitter (return (return r))
+
   m >>= f =
     Emitter $ do
       ma <- emit m
@@ -52,7 +57,9 @@ instance (Monad m) => Monad (Emitter m) where
         Just a -> emit (f a)
 
 instance (Monad m, Alternative m) => Alternative (Emitter m) where
+
   empty = Emitter (pure Nothing)
+
   x <|> y =
     Emitter $ do
       (i, ma) <- fmap ((,) y) (emit x) <|> fmap ((,) x) (emit y)
@@ -61,21 +68,25 @@ instance (Monad m, Alternative m) => Alternative (Emitter m) where
         Just a -> pure (Just a)
 
 instance (Alternative m, Monad m) => MonadPlus (Emitter m) where
+
   mzero = empty
+
   mplus = (<|>)
 
 instance (Alternative m, Monad m) => Semigroup (Emitter m a) where
   (<>) = (<|>)
 
 instance (Alternative m, Monad m) => Monoid (Emitter m a) where
+
   mempty = empty
+
   mappend = (<>)
 
+-- | lift an STM emitter
 liftE :: (MonadConc m) => Emitter (STM m) a -> Emitter m a
 liftE = Emitter . atomically . emit
 
 -- | like a monadic mapMaybe. (See [witherable](https://hackage.haskell.org/package/witherable))
---
 emap :: (Monad m) => (a -> m (Maybe b)) -> Emitter m a -> Emitter m b
 emap f e = Emitter go
   where
@@ -91,12 +102,12 @@ emap f e = Emitter go
 
 -- | prism handler
 keeps ::
-     (Monad m)
-  => ((b -> Constant (First b) b) -> (a -> Constant (First b) a))
-    -- ^
-  -> Emitter m a
-    -- ^
-  -> Emitter m b
+  (Monad m) =>
+  -- |
+  ((b -> Constant (First b) b) -> (a -> Constant (First b) a)) ->
+  -- |
+  Emitter m a ->
+  Emitter m b
 keeps k (Emitter emit_) = Emitter emit_'
   where
     emit_' = do
@@ -115,9 +126,9 @@ eParse parser e = either (Left . Text.pack) Right . A.parseOnly parser <$> e
 
 -- | read parse emitter
 eRead ::
-     (Functor m, Read a)
-  => Emitter m Text
-  -> Emitter m (Either Text a)
+  (Functor m, Read a) =>
+  Emitter m Text ->
+  Emitter m (Either Text a)
 eRead = fmap $ parsed . Text.unpack
   where
     parsed str =

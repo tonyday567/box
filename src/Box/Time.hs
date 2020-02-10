@@ -8,23 +8,24 @@
 
 -- | timing effects
 module Box.Time
-  ( sleep
-  , keepOpen
-  , delayTimed
-  , Stamped(..)
-  , stampNow
-  , emitStamp
-  ) where
+  ( sleep,
+    keepOpen,
+    delayTimed,
+    Stamped (..),
+    stampNow,
+    emitStamp,
+  )
+where
 
-import Data.Time
 import Box.Cont
 import Box.Emitter
 import Box.Stream
-import qualified Streaming.Prelude as S
-import qualified Streaming as S
 import Control.Monad.Conc.Class as C
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
+import Data.Time
+import qualified Streaming as S
+import qualified Streaming.Prelude as S
 
 -- | sleep for x seconds
 sleep :: (MonadConc m) => Double -> m ()
@@ -36,8 +37,10 @@ keepOpen = toEmit $ lift $ threadDelay (365 * 24 * 60 * 60 * 10 ^ 6)
 
 -- | a stream with suggested delays.  DiffTime is the length of time to wait since the start of the stream
 -- > delayTimed (S.each (zip (fromIntegral <$> [1..10]) [1..10])) |> S.print
-delayTimed :: (MonadConc m, MonadIO m) =>
-     S.Stream (S.Of (NominalDiffTime, a)) m () -> S.Stream (S.Of a) m ()
+delayTimed ::
+  (MonadConc m, MonadIO m) =>
+  S.Stream (S.Of (NominalDiffTime, a)) m () ->
+  S.Stream (S.Of a) m ()
 delayTimed s = do
   t0 <- liftIO getCurrentTime
   go (S.hoistUnexposed lift s) t0
@@ -56,11 +59,15 @@ delayTimed s = do
       -- sleep gap
       threadDelay (truncate (gap * 1000000))
 
-data Stamped a = Stamped
-  { timestamp :: UTCTime
-  , value :: a
-  } deriving (Eq, Show, Read)
+-- | A value with a timestamp annotation.
+data Stamped a
+  = Stamped
+      { timestamp :: UTCTime,
+        value :: a
+      }
+  deriving (Eq, Show, Read)
 
+-- | Add the current time
 stampNow :: (MonadConc m, MonadIO m) => a -> m (Stamped a)
 stampNow a = do
   t <- liftIO getCurrentTime
@@ -73,5 +80,3 @@ emitStamp ::
   Cont m (Emitter m a) ->
   Cont m (Emitter m (Stamped a))
 emitStamp e = emap (fmap Just . stampNow) <$> e
-
-

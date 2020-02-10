@@ -4,23 +4,26 @@
 
 -- | based on https://github.com/Gabriel439/Haskell-MVC-Updates-Library
 module Box.Updater
-  ( Updater(..)
-  , updater
-  , listen
-  , updates
-  ) where
+  ( Updater (..),
+    updater,
+    listen,
+    updates,
+  )
+where
 
-import Control.Applicative (Applicative((<*>), pure))
-import Control.Foldl (Fold(..), FoldM(..))
-import qualified Control.Foldl as Foldl
 import Box
+import Control.Applicative (Applicative ((<*>), pure))
+import Control.Foldl (Fold (..), FoldM (..))
+import qualified Control.Foldl as Foldl
 import Control.Monad.Conc.Class as C
 import qualified GHC.Conc
 
 -- | An updater of a value a, where the updating process consists of an IO fold over an emitter
-data Updater a =
-  forall e. Updater (FoldM IO e a)
-                    (Cont IO (Emitter GHC.Conc.STM e))
+data Updater a
+  = forall e.
+    Updater
+      (FoldM IO e a)
+      (Cont IO (Emitter GHC.Conc.STM e))
 
 instance Functor Updater where
   fmap f (Updater fold' e) = Updater (fmap f fold') e
@@ -48,13 +51,15 @@ onRight (FoldM step begin done) = FoldM step' begin done
     step' x _ = return x
 
 instance Applicative Updater where
+
   pure a = Updater (pure a) mempty
+
   (Updater foldL eL) <*> (Updater foldR eR) = Updater foldT eT
     where
       foldT = onLeft foldL <*> onRight foldR
       eT = fmap (fmap Left) eL <> fmap (fmap Right) eR
 
--- | Create an `Updatable` value using a pure `Fold`
+-- | Create an 'Updater' value using a pure 'Fold'
 updater :: Fold e a -> Cont IO (Emitter GHC.Conc.STM e) -> Updater a
 updater fold' = Updater (Foldl.generalize fold')
 
@@ -62,7 +67,6 @@ updater fold' = Updater (Foldl.generalize fold')
 -- > listen mempty = id
 -- >
 -- > listen (f <> g) = listen g . listen f
---
 listen :: (a -> IO ()) -> Updater a -> Updater a
 listen handler (Updater (FoldM step begin done) mController) =
   Updater (FoldM step' begin' done) mController
@@ -78,8 +82,9 @@ listen handler (Updater (FoldM step begin done) mController) =
       handler b
       return x'
 
+-- | Convert an 'Updater' to an Emitter continuation.
 updates :: Updater a -> Cont IO (Emitter GHC.Conc.STM a)
-updates (Updater (FoldM step begin done) e) = Cont $ \e' -> queueE cio e'
+updates (Updater (FoldM step begin done) e) = Cont $ \e' -> queueE' cio e'
   where
     ioref c = do
       x <- begin
