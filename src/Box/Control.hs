@@ -22,8 +22,6 @@ module Box.Control
     testBox,
     beep,
     timeOut,
-    echo,
-    createP,
   )
 where
 
@@ -48,9 +46,6 @@ import qualified Data.Text.IO as Text
 import GHC.Generics
 import qualified Streaming.Prelude as S
 import Text.Read (readMaybe)
-import System.IO
-import System.Process
-import Control.Lens
 
 -- | request ADT
 data ControlRequest
@@ -97,14 +92,15 @@ data ControlResponse
 -- | A 'Box' that communicates via 'ControlRequest' and 'ControlResponse'
 type ControlBox m = (MonadConc m) => Cont m (Box (STM m) ControlResponse ControlRequest)
 
--- | 
-data ControlConfig =
-  ControlConfig
-  { restarts :: Int
-  , autoStart :: Bool
-  , autoRestart :: Bool
-  , autoRestartTimeout :: Double
-  } deriving (Show, Eq, Ord)
+-- |
+data ControlConfig
+  = ControlConfig
+      { restarts :: Int,
+        autoStart :: Bool,
+        autoRestart :: Bool,
+        autoRestartTimeout :: Double
+      }
+  deriving (Show, Eq, Ord)
 
 -- | Default is zero restarts, manual start, no autorestart and sleep for a second on autorestarting.
 defaultControlConfig :: ControlConfig
@@ -189,9 +185,10 @@ controlBox (ControlConfig restarts' autostart autorestart t) app (Box c e) = do
     shutdownIfNoRestarts r s = do
       (CBS _ n) <- C.readIORef r
       bool
-        (do
+        ( do
             atomically $ writeTVar s True
-            shutdown)
+            shutdown
+        )
         (pure ())
         (n >= 0)
     go r s = do
@@ -224,7 +221,6 @@ beep m x s = when (x <= m) (sleep s >> Text.putStrLn ("beep " <> Text.pack (show
 -- beep 2
 -- beep 3
 -- ShutDown
---
 testBox :: ControlConfig -> Double -> IO () -> IO ()
 testBox cfg t effect = with (consoleControlBox <> timeOut t) (controlBox cfg effect)
 
@@ -232,101 +228,4 @@ testBox cfg t effect = with (consoleControlBox <> timeOut t) (controlBox cfg eff
 timeOut :: Double -> ControlBox m
 timeOut t =
   Box <$> mempty <*> ((lift (sleep t) >> S.yield Quit) & toEmit)
-
-
--- experiments with a process
-echo :: Text -> IO ()
-echo p = forever $ do
-  t <- Text.getLine
-  Text.putStrLn $ p <> t
-
--- | create a process, returning stdin, stdout and process handles
-createP :: FilePath -> [Text] -> IO (Handle, Handle, ProcessHandle)
-createP cmd args = do
-  (Just inH, Just outH, Nothing, procH) <- createProcess (proc cmd (Text.unpack <$> args)) {
-      std_in = CreatePipe, std_out = CreatePipe
-    }
-  hSetBuffering inH LineBuffering
-  pure (inH, outH, procH)
-
-mkProcessBox :: FilePath -> [Text] -> IO (Cont IO (Box (STM IO) Text Text), ProcessHandle)
-mkProcessBox cmd args = do
-  (inH, outH, procH) <- createP cmd args
-  pure
-    ( Box <$>
-      (Box.putLine inH & commitPlug) <*>
-      (Box.getLine outH & emitPlug)
-    , procH)
-
-transEcho :: Cont IO (Box (STM IO) Text Text) -> IO ()
-transEcho outer = do
-  (box', proch) <- mkProcessBox "echo" [":"]
-  let wireIn = Box <$> (committer <$> box') <*> ((emitter <$> outer) <> (eStdin 10))
-  let wireOut = Box <$> (committer <$> outer) <*> ((emitter <$> box') <> eStdin 10)
-  let tq = Transducer $ \s -> s & S.takeWhile (/="quit")
-  race
-    (etc () tq wireIn >> putStrLn "wireIn collapse")
-    (etc () tq wireOut >> putStrLn "wireOut collapse")
-  putStrLn ("end of wire race")
-  cleanupProcess (Nothing, Nothing, Nothing, proch)
-
--- testEcho :: ControlConfig -> Double -> IO ()
-testEcho :: ControlConfig -> Cont IO (Box (STM IO) ControlResponse ControlRequest) -> IO ()
-testEcho cfg b =
-  with b (controlBox cfg (transEcho echoBoxConsole'))
-
-t1 :: IO ()
-t1 = testEcho defaultControlConfig consoleControlBox
-
-controlTextBox ::
-   Cont IO (Box (STM IO) Text Text)
-controlTextBox =
-  Box
-    <$> ( contramap (Text.pack . show)
-            <$> (cStdout 1000 :: Cont IO (Committer (STM IO) Text))
-        )
-    <*> ( (eStdin 1000)
-        )
-
-echoBoxConsole ::
-   Cont IO (Box (STM IO) (Either ControlResponse Text) (Either Text (Either ControlRequest Text)))
-echoBoxConsole =
-  Box
-    <$> ( contramap (Text.pack . show)
-            <$> (cStdout 1000 :: Cont IO (Committer (STM IO) Text))
-        )
-    <*> ( eParse parseControlRequest' <$> eStdin 1000
-        )
-
-ebInner :: Cont IO (Box (STM IO) Text Text)
-ebInner =
-  bmap
-  (pure . Just . Right)
-  (pure . either (const Nothing) (either (const Nothing) Just)) <$>
-  echoBoxConsole
-
-ebControl :: Cont IO (Box (STM IO) ControlResponse ControlRequest)
-ebControl =
-  bmap
-  (pure . Just . Left)
-  (pure . either (const Nothing) (either Just (const Nothing))) <$>
-  echoBoxConsole
-
-echoBoxConsole' ::
-   Cont IO (Box (STM IO) Text Text)
-echoBoxConsole' =
-  Box
-    <$> ( contramap (Text.pack . show)
-            <$> (cStdout 1000 :: Cont IO (Committer (STM IO) Text))
-        )
-    <*> ( keeps (_Right . _Right) <$> eParse parseControlRequest' <$> eStdin 1000
-        )
-
-
-t2 :: IO ()
-t2 = with ebControl (controlBox (ControlConfig 4 False False 2) (transEcho ebInner))
-
-
-eboth :: Cont IO (Emitter (STM IO) (Either Text ControlRequest))
-eboth = emerge ((,) <$> (fmap Left . emitter <$> ebInner) <*> (fmap Right . emitter <$> ebControl))
 
