@@ -21,6 +21,7 @@ module Box.Stream
   )
 where
 
+import Prelude
 import Box.Committer
 import Box.Cont
 import Box.Emitter

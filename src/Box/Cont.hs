@@ -11,6 +11,7 @@ module Box.Cont
   )
 where
 
+import Prelude
 import Control.Applicative
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Monoid (Monoid (..))

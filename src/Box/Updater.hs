@@ -11,6 +11,7 @@ module Box.Updater
   )
 where
 
+import Prelude
 import Box
 import Control.Applicative (Applicative ((<*>), pure))
 import Control.Foldl (Fold (..), FoldM (..))

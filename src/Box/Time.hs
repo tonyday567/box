@@ -17,6 +17,7 @@ module Box.Time
   )
 where
 
+import Prelude
 import Box.Cont
 import Box.Emitter
 import Box.Stream

@@ -1,5 +1,6 @@
 module Main where
 
+import Prelude
 import Box
 import Box.Control
 import Control.Concurrent.Async

@@ -32,6 +32,7 @@ module Box.Queue
   )
 where
 
+import Prelude
 import Box.Box
 import Box.Committer
 import Box.Emitter

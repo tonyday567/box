@@ -16,11 +16,13 @@ module Box.Committer
   )
 where
 
+import Prelude
 import Control.Lens hiding ((.>), (:>), (<|), (|>))
 import Control.Monad.Conc.Class as C
 import Data.Functor.Constant
 import Data.Functor.Contravariant.Divisible
-import Data.Monoid (First (..))
+import Data.Semigroup (Semigroup)
+import Data.Monoid (First (..), Monoid)
 import Data.Void (absurd)
 
 -- | a Committer a "commits" values of type a. A Sink and a Consumer are some other metaphors for this.

@@ -11,6 +11,7 @@ module Box.Broadcast
   )
 where
 
+import Prelude
 import Box.Committer
 import Box.Cont
 import Box.Emitter

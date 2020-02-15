@@ -19,6 +19,7 @@ module Box.Emitter
   )
 where
 
+import Prelude
 import Control.Applicative
 import Control.Monad
 import Control.Monad.Conc.Class as C

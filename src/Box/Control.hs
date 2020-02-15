@@ -25,6 +25,7 @@ module Box.Control
   )
 where
 
+import Prelude
 import Box
 import Control.Applicative
 import Control.Concurrent.Async

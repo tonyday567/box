@@ -18,6 +18,7 @@ module Box.Plugs
   )
 where
 
+import Prelude
 import Box.Box
 import Box.Committer
 import Box.Cont

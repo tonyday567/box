@@ -15,6 +15,7 @@ module Box.Box
   )
 where
 
+import Prelude
 import Box.Committer
 import Box.Emitter
 import Control.Applicative
