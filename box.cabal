@@ -82,6 +82,31 @@ executable concurrency-tests
     , transformers
   default-language: Haskell2010
 
+executable websocket-tests
+  main-is: websocket-tests.hs
+  other-modules:
+      Paths_box
+  hs-source-dirs:
+      app
+  ghc-options: -funbox-strict-fields -fforce-recomp -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+    base >=4.7 && <5
+    , box
+    , concurrency
+    , dejafu
+    , generic-lens
+    , lens
+    , managed
+    , mtl
+    , protolude
+    , random
+    , streaming
+    , text
+    , transformers
+    , websockets
+  default-language: Haskell2010
+
+
 test-suite test
   type: exitcode-stdio-1.0
   main-is: test.hs
