@@ -1,156 +1,257 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeFamilies #-}
+
 module Main where
 
-import Prelude
 import Box
 import Box.Control
 import Control.Concurrent.Async
+import Control.Concurrent.Classy.STM.TVar as C
+import Control.Exception
 import Control.Lens hiding ((|>))
+import Control.Monad
 import Control.Monad.Conc.Class as C
+import Control.Monad.STM.Class
+import qualified Data.Attoparsec.Text as A
+import Data.Bool
+import Data.Maybe
 import qualified Data.Text as Text
 import Data.Text (Text)
-import qualified Streaming.Prelude as S
+import qualified Data.Text.IO as Text
 import System.IO
-import System.Process
+import qualified System.Process as P
+import System.Process.Typed
+import Prelude
+
+boxEcho :: FilePath
+boxEcho = "/Users/tonyday/haskell/box/.stack-work/install/x86_64-osx/lts-14.13/8.6.5/bin/box-echo"
+
+cannedCat :: ProcessConfig Handle Handle ()
+cannedCat =
+  setStdin createPipe
+    $ setStdout createPipe
+    $ setStderr closed
+      "cat"
+
+-- λ: c <- cat'
+-- λ: hPutStrLn (getStdin e) "Hello!"
+-- λ: hGetLine (getStdout c)
+-- "Hello!"
+cat' :: IO (Process Handle Handle ())
+cat' = do
+  p' <- startProcess cannedCat
+  hSetBuffering (getStdout p') NoBuffering
+  hSetBuffering (getStdin p') NoBuffering
+  pure p'
+
+-- λ: tCat
+-- "Hello!"
+tCat :: IO ()
+tCat =
+    withProcessTerm cannedCat $ \p -> do
+        hPutStrLn (getStdin p) "Hello!"
+        hFlush (getStdin p)
+        hGetLine (getStdout p) >>= print
+
+cannedEcho :: ProcessConfig Handle Handle ()
+cannedEcho =
+  setStdin createPipe
+    $ setStdout createPipe
+    -- $ setStderr closed
+    $ proc boxEcho []
+
+-- λ: e <- echo'
+-- λ: hPutStrLn (getStdin e) "Hello!"
+-- λ: hGetLine (getStdout e)
+-- ^CInterrupted.
+-- λ: hGetLine (getStdout e)
+-- "first line"
+-- λ: hGetLine (getStdout e)
+-- "Hello!"
+echo' :: IO (Process Handle Handle ())
+echo' = do
+  p' <- startProcess cannedEcho
+  hSetBuffering (getStdout p') NoBuffering
+  hSetBuffering (getStdin p') NoBuffering
+  pure p'
+
+-- λ: tEcho
+-- ^CInterrupted.
+tEcho :: IO ()
+tEcho =
+    withProcessTerm cannedEcho $ \p -> do
+        hPutStrLn (getStdin p) "Hello!"
+        hFlush (getStdin p)
+        hGetLine (getStdout p) >>= print
 
 {-
-The big problem here is using stdin for both comms to the box and as a pipe to the underlying processes stdin.
 
-t1 & t2 output both look as if the input gets swallowed by one of the committers rather than gets propogated properly.
-
+old-school process testing
 
 -}
-
-
 -- | create a process, returning stdin, stdout and process handles
-createP :: FilePath -> [Text] -> IO (Handle, Handle, ProcessHandle)
+createP :: FilePath -> [Text] -> IO (Handle, Handle, P.ProcessHandle)
 createP cmd args = do
   (Just inH, Just outH, Nothing, procH) <-
-    createProcess
-      (proc cmd (Text.unpack <$> args))
-        { std_in = CreatePipe,
-          std_out = CreatePipe
+    P.createProcess
+      (P.proc cmd (Text.unpack <$> args))
+        { P.std_in = P.CreatePipe,
+          P.std_out = P.CreatePipe
         }
   hSetBuffering inH LineBuffering
   pure (inH, outH, procH)
 
-mkProcessBox :: FilePath -> [Text] -> IO (Cont IO (Box (STM IO) Text Text), ProcessHandle)
-mkProcessBox cmd args = do
-  (inH, outH, procH) <- createP cmd args
-  pure
-    ( Box
-        <$> (Box.putLine inH & commitPlug)
-        <*> (Box.getLine outH & emitPlug),
-      procH
-    )
+testCreatePEcho :: IO ()
+testCreatePEcho = do
+  (i, o, p) <- createP "/Users/tonyday/haskell/box/.stack-work/install/x86_64-osx/lts-14.13/8.6.5/bin/box-echo" []
+  putStrLn "createP created"
+  hPutStrLn i "test input"
+  hFlush i
+  t <- hGetLine o
+  putStrLn t
+  P.cleanupProcess (Nothing, Nothing, Nothing, p)
 
-transEcho :: Cont IO (Box (STM IO) Text Text) -> IO ()
-transEcho outer = do
-  (box', proch) <- mkProcessBox "/Users/tonyday/haskell/box/.stack-work/install/x86_64-osx/lts-14.13/8.6.5/bin/box-echo" [":"]
-  let wireIn = Box <$> (committer <$> box') <*> ((emitter <$> outer) <> eStdin 10)
-  let wireOut = Box <$> (committer <$> outer) <*> ((emitter <$> box') <> eStdin 10)
-  let tq = Transducer $ \s -> s & S.takeWhile (/= "quit")
-  _ <- race
-    (etc () tq wireIn >> putStrLn "wireIn collapse")
-    (etc () tq wireOut >> putStrLn "wireOut collapse")
-  putStrLn "end of wire race"
-  cleanupProcess (Nothing, Nothing, Nothing, proch)
+testCreatePCat :: IO ()
+testCreatePCat = do
+  (i, o, p) <- createP "cat" []
+  putStrLn "createP created"
+  hPutStrLn i "test input"
+  hFlush i
+  t <- hGetLine o
+  putStrLn t
+  P.cleanupProcess (Nothing, Nothing, Nothing, p)
 
-testEcho :: ControlConfig -> Cont IO (Box (STM IO) ControlResponse ControlRequest) -> IO ()
-testEcho cfg b =
-  with b (controlBox cfg (transEcho echoBoxConsole'))
 
-{-
-λ: t1
-Status (Off,0)
-s
-Status (On,0)
-hello
-s
-s
-s
-"s"
-swallowing
-swallowing
-Status (On,-1)
-ShutDown
-λ: box-echo: <stdin>: hGetLine: end of file
--}
-t1 :: IO ()
-t1 = testEcho defaultControlConfig consoleControlBox
 
-controlTextBox ::
-  Cont IO (Box (STM IO) Text Text)
-controlTextBox =
+-- control box process
+data CBP = CBP {listenThread :: Maybe (Async ()), process :: Maybe (Process Handle Handle ()), restarts :: Int}
+
+-- | an effect that can be started, stopped and restarted (a limited number of times)
+controlBoxProcess ::
+  ControlConfig ->
+  ProcessConfig Handle Handle () ->
+  Box (STM IO) (Either ControlResponse Text) (Either ControlRequest Text) ->
+  IO ()
+controlBoxProcess (ControlConfig restarts' autostart _ debug') pc (Box c e) = do
+  info "controlBoxProcess"
+  ref <- C.newIORef (CBP Nothing Nothing restarts')
+  shut <- atomically $ C.newTVar False
+  when autostart (info "autostart" >> start ref shut)
+  info "race_"
+  race_
+    (go ref shut)
+    (shutCheck shut)
+  cancelThread ref
+  info "controlBoxProcess end"
+  where
+    cancelThread r = do
+      info "cancelThread"
+      a <- readIORef r
+      maybe (info "no listener on cancelThread") (\x -> cancel x >> info "listener cancelled") (listenThread a)
+      maybe (info "no process on cancelThread") (\x -> stopProcess x >> info "process cancelled") (process a)
+      writeIORef r (CBP Nothing Nothing (restarts a))
+    shutCheck s = do
+      info "shutCheck"
+      atomically $ check =<< readTVar s
+      info "shutCheck signal received"
+    status r = do
+      info "status"
+      a <- C.readIORef r
+      C.atomically
+        ( void $
+            commit
+              c
+              (Left $ Status (bool Off On (isJust (process a)), restarts a))
+        )
+    loopApp r _ = do
+      info "loopApp"
+      p' <- startProcess pc
+      a <- readIORef r
+      when (isJust (process a)) (info "eeek, a process ref has been overwritten")
+      when (isJust (listenThread a)) (info "eeek, a listener ref has been overwritten")
+      info "process is up"
+      wo <- async (lloop0 (getStdout p') `finally` info "wo finished")
+      writeIORef r (CBP (Just wo) (Just p') (restarts a))
+      info "listener is up"
+      link wo
+    lloop0 o = do
+      b <- hIsEOF o
+      when (not b) (checkOutH o >> lloop0 o)
+    checkOutH o = do
+      info "waiting for process output"
+      t <- Text.hGetLine o
+      info ("received: " <> t)
+      C.atomically $ void $ commit (contramap Right c) t
+    dec r = do
+      info "dec"
+      a <- readIORef r
+      writeIORef r (a {restarts = restarts a - 1})
+    start r s = do
+      info "start"
+      a <- readIORef r
+      when (isNothing (process a)) $ do
+        dec r
+        loopApp r s
+    stop r s = do
+      info "stop"
+      cancelThread r
+      checkRestarts r s
+    info t = bool (pure ()) (void $ commit (liftC c) $ Left (Info t)) debug'
+    shutdown = do
+      info "shutDown"
+      void $ commit (liftC c) (Left ShuttingDown)
+    checkRestarts r s = do
+      info "check restarts"
+      n <- restarts <$> C.readIORef r
+      bool
+        ( do
+            atomically $ writeTVar s True
+            shutdown
+        )
+        (pure ())
+        (n > 0)
+    writeIn r t = do
+      info ("writeIn: " <> t)
+      p <- process <$> C.readIORef r
+      maybe
+        (info "no stdin available")
+        (\i -> hPutStrLn (getStdin i) (Text.unpack t) >> hFlush (getStdin i))
+        p
+    go r s = do
+      info "go"
+      status r
+      msg <- C.atomically $ emit e
+      case msg of
+        Nothing -> go r s
+        Just msg' ->
+          case msg' of
+            Left Check ->
+              go r s
+            Left Start -> do
+              start r s
+              go r s
+            Left Stop -> do
+              stop r s
+              go r s
+            Left Quit -> stop r s >> shutdown
+            Left Reset -> stop r s >> start r s >> go r s
+            Right t -> writeIn r t >> go r s
+
+controlConsole ::
+  Cont IO (Box (STM IO) (Either ControlResponse Text) (Either ControlRequest Text))
+controlConsole =
   Box
     <$> ( contramap (Text.pack . show)
             <$> (cStdout 1000 :: Cont IO (Committer (STM IO) Text))
         )
-    <*> eStdin 1000
-
-echoBoxConsole ::
-  Cont IO (Box (STM IO) (Either ControlResponse Text) (Either Text (Either ControlRequest Text)))
-echoBoxConsole =
-  Box
-    <$> ( contramap (Text.pack . show)
-            <$> (cStdout 1000 :: Cont IO (Committer (STM IO) Text))
-        )
-    <*> ( eParse parseControlRequest' <$> eStdin 1000
+    <*> ( fmap (either (Right . ("parse error: " <>)) id)
+            . eParse (parseControlRequest A.takeText) <$> eStdin 1000
         )
 
-ebInner :: Cont IO (Box (STM IO) Text Text)
-ebInner =
-  bmap
-    (pure . Just . Right)
-    (pure . either (const Nothing) (either (const Nothing) Just))
-    <$> echoBoxConsole
-
-ebControl :: Cont IO (Box (STM IO) ControlResponse ControlRequest)
-ebControl =
-  bmap
-    (pure . Just . Left)
-    (pure . either (const Nothing) (either Just (const Nothing)))
-    <$> echoBoxConsole
-
-echoBoxConsole' ::
-  Cont IO (Box (STM IO) Text Text)
-echoBoxConsole' =
-  Box
-    <$> ( contramap (Text.pack . show)
-            <$> (cStdout 1000 :: Cont IO (Committer (STM IO) Text))
-        )
-    <*> ( keeps (_Right . _Right) <$> eParse parseControlRequest' <$> eStdin 1000
-        )
-
-{-
-λ: t2
-Left (Status (Off,4))
-s
-Left (Status (On,3))
-hello
-hello
-hello
-hello
-Right "hello"
-c
-c
-Left (Status (On,3))
-Left (Status (On,3))
-s
-s
-s
-Right "s"
-q
-q
-Left (Status (Off,3))
-x
-Left ShutDown
-λ: box-echo: <stdin>: hGetLine: end of file
--}
-t2 :: IO ()
-t2 = with ebControl (controlBox (ControlConfig 4 False False 2) (transEcho ebInner))
-
-eboth :: Cont IO (Emitter (STM IO) (Either Text ControlRequest))
-eboth = emerge ((,) <$> (fmap Left . emitter <$> ebInner) <*> (fmap Right . emitter <$> ebControl))
+testCatControl :: ControlConfig -> IO ()
+testCatControl cfg = with controlConsole (controlBoxProcess cfg cannedCat)
 
 main :: IO ()
-main = pure ()
+main = testCatControl defaultControlConfig
