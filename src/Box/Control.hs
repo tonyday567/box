@@ -68,11 +68,11 @@ data ControlRequest
 -- | Parse command line requests
 parseControlRequest :: A.Parser a -> A.Parser (Either ControlRequest a)
 parseControlRequest pa =
-  A.string "c" $> Left Check
-    <|> A.string "s" $> Left Start
-    <|> A.string "q" $> Left Stop
-    <|> A.string "r" $> Left Reset
-    <|> A.string "x" $> Left Quit
+  A.string "check" $> Left Check
+    <|> A.string "start" $> Left Start
+    <|> A.string "quit" $> Left Stop
+    <|> A.string "reset" $> Left Reset
+    <|> A.string "shutdown" $> Left Quit
     <|> (Right <$> pa)
 
 data Toggle = On | Off deriving (Show, Read, Eq, Generic)
@@ -346,7 +346,7 @@ controlConsole ::
   Cont IO (Box (STM IO) (Either ControlResponse Text) (Either ControlRequest Text))
 controlConsole =
   Box
-    <$> ( contramap (Text.pack . show)
+    <$> ( contramap (either (("Response: " <>) . Text.pack . show) id)
             <$> (cStdout 1000 :: Cont IO (Committer (STM IO) Text))
         )
     <*> ( fmap (either (Right . ("parse error: " <>)) id)

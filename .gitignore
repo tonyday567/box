@@ -6,3 +6,4 @@ TAGS
 /.projectile
 /dist-newstyle
 /.ghc.environment.x86_64-darwin-8.6.5
+/app/.DS_Store
