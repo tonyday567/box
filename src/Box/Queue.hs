@@ -56,7 +56,7 @@ ends :: MonadSTM stm => Queue a -> stm (a -> stm (), stm a)
 ends qu =
   case qu of
     Bounded n -> do
-      q <- newTBQueue n
+      q <- newTBQueue (fromIntegral n)
       return (writeTBQueue q, readTBQueue q)
     Unbounded -> do
       q <- newTQueue
@@ -71,7 +71,7 @@ ends qu =
       m <- newEmptyTMVar
       return (\x -> tryTakeTMVar m *> putTMVar m x, takeTMVar m)
     Newest n -> do
-      q <- newTBQueue n
+      q <- newTBQueue (fromIntegral n)
       let write x = writeTBQueue q x <|> (tryReadTBQueue q *> write x)
       return (write, readTBQueue q)
 
