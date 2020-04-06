@@ -48,5 +48,5 @@ recipe
 ---
 
 ```
-stack build --test --exec "$(stack path --local-install-root)/bin/box-test" --file-watch
+stack build --test --exec "$(stack path --local-install-root)/bin/concurrency-tests" --file-watch
 ```

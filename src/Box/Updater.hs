@@ -13,7 +13,6 @@ where
 
 import Prelude
 import Box
-import Control.Applicative (Applicative ((<*>), pure))
 import Control.Foldl (Fold (..), FoldM (..))
 import qualified Control.Foldl as Foldl
 import Control.Monad.Conc.Class as C

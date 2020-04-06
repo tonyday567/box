@@ -22,11 +22,9 @@ module Main where
 
 import Box
 import Box.Control
-import Control.Exception (bracket)
 import Control.Lens
 import Control.Monad.Managed
 import Data.Generics.Labels ()
-import Data.Text (Text)
 import qualified Data.Text as Text
 import GHC.Generics
 import qualified Network.WebSockets as WS

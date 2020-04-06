@@ -14,8 +14,6 @@ where
 import Prelude
 import Control.Applicative
 import Control.Monad.IO.Class (MonadIO (liftIO))
-import Data.Monoid (Monoid (..))
-import Data.Semigroup (Semigroup (..))
 
 -- | A continuation similar to ` Control.Monad.ContT` but where the result type is swallowed by an existential
 newtype Cont m a
