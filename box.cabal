@@ -53,6 +53,7 @@ library
     , lens
     , pipes
     , profunctors
+    , protolude
     , streaming
     , text
     , time
@@ -76,6 +77,7 @@ executable concurrency-tests
     , generic-lens
     , lens
     , mtl
+    , protolude
     , random
     , streaming
     , text
