@@ -3,4 +3,5 @@ resolver: lts-15.13
 packages:
   - .
 
-extra-deps: []
+extra-deps:
+  - protolude-0.3.0
