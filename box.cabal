@@ -9,7 +9,7 @@ bug-reports:    https://github.com/tonyday567/box/issues
 author:         Tony Day
 maintainer:     tonyday567@gmail.com
 copyright:      Tony Day (c) 2017
-license:        BSD3
+license:        BSD-3-Clause
 license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
