@@ -59,6 +59,18 @@ import Control.Lens ((&))
 -- >>> let box' = Box <$> committer' <*> emitter'
 -- >>> let transducer' = Transducer $ \s -> s & S.takeWhile (/="q") & S.map ("echo: " <>)
 
+-- toEmit . S.each
+--
+
+-- | emitting
+-- > toListE . fromListE :: [a] -> IO [a]
+-- >>>  toListE . fromListE $ [1..3::Int]
+-- [1,2,3]
+--
+-- > fuse (pure . Just) $ Box <$> (liftC <$> showStdout) <*> (fromListE [1..3::Int])
+
+
+
 -- $commit
 -- committing
 --

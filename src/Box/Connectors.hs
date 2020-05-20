@@ -24,6 +24,8 @@ module Box.Connectors
     splitCommit,
     splitCommitSTM,
     contCommit,
+    fromListE,
+    toListE,
   )
 where
 
@@ -179,3 +181,26 @@ feedbackE ::
   Cont m (Emitter m a)
 feedbackE f e =
   emergeM ((,) <$> pure e <*> fuseEmitM (emap f e))
+
+-- | turn a list into an emitter
+fromListE :: [a] -> Cont IO (Emitter IO a)
+fromListE xs = Cont $ queueEM' (eListC (Emitter . pure . Just <$> xs))
+
+eListC :: (Monad m) => [Emitter m a] -> Committer m a -> m ()
+eListC [] _ = pure ()
+eListC (e:es) c = do
+  x <- emit e
+  case x of
+    Nothing -> pure ()
+    Just x' -> commit c x' >> eListC es c
+
+-- | turn a list into an emitter
+toListE :: (MonadConc m) => Cont m (Emitter m a) -> m [a]
+toListE ce = with ce (go [])
+  where
+    go xs e = do
+      x <- emit e
+      case x of
+        Nothing -> pure (reverse xs)
+        Just x' -> go (x':xs) e
+

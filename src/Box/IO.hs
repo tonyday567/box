@@ -1,6 +1,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -32,6 +34,9 @@ module Box.IO
     toListM,
     getCommissions,
     getEmissions,
+    fileEmitter,
+    fileCommitter,
+    appendCommitter,
   )
 where
 
@@ -48,15 +53,11 @@ import Control.Lens hiding ((.>), (:>), (<|), (|>))
 import Control.Monad
 import qualified Control.Monad.Conc.Class as C
 import Control.Monad.Conc.Class (STM)
-import Control.Monad.IO.Class
-import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
-import Streaming (Of (..), Stream)
-import qualified Streaming.Internal as S
 import qualified Streaming.Prelude as S
 import System.IO hiding (getLine)
-import Prelude hiding (getLine)
+import Protolude hiding (getLine, STM)
 
 -- * console
 
@@ -155,34 +156,30 @@ consolePlug :: Int -> Cont IO (Box (STM IO) Text Text)
 consolePlug n = boxPlug (eStdout n) (cStdin n)
 
 -- * file operations
+-- | Emits lines of Text from a handle.
+emitLines :: Handle -> Emitter IO Text
+emitLines h = Emitter $ do
+  l :: (Either IOException Text) <- try (Text.hGetLine h)
+  pure $ case l of
+    Left _ -> Nothing
+    Right a -> bool (Just a) Nothing (a == "")
 
--- | emit lines from a file
-emitLines :: FilePath -> Cont IO (Emitter (STM IO) Text)
-emitLines filePath = Cont (withFile filePath ReadMode) >>= (toEmit . fromHandle)
-  where
-    fromHandle :: Handle -> Stream (Of Text) IO ()
-    fromHandle h =
-      forever $ do
-        a <- liftIO $ Text.hGetLine h
-        S.yield a
+-- | Commit lines of Text to a handle.
+commitLines :: Handle -> Committer IO Text
+commitLines h = Committer $ \a -> do
+  Text.hPutStrLn h a
+  pure True
 
--- | commit lines to a file
-commitLines :: FilePath -> Cont IO (Committer (STM IO) Text)
-commitLines filePath =
-  Cont (withFile filePath WriteMode) >>= (toCommit . toHandle)
-  where
-    toHandle h = loop
-      where
-        loop str =
-          case str of
-            S.Return r -> return r
-            S.Effect m -> m >>= loop
-            S.Step (s :> rest) -> do
-              liftIO (Text.hPutStrLn h s)
-              loop rest
+fileEmitter :: FilePath -> Cont IO (Emitter IO Text)
+fileEmitter fp = Cont $ \eio -> withFile fp ReadMode (eio . emitLines)
+
+fileCommitter :: FilePath -> Cont IO (Committer IO Text)
+fileCommitter fp = Cont $ \cio -> withFile fp WriteMode (cio . commitLines)
+
+appendCommitter :: FilePath -> Cont IO (Committer IO Text)
+appendCommitter fp = Cont $ \cio -> withFile fp AppendMode (cio . commitLines)
 
 -- * concurrent refs
-
 -- | commit to a list CRef
 cCRef :: (C.MonadConc m) => m (C.IORef m [b], Cont m (Committer (C.STM m) b), m [b])
 cCRef = do

@@ -175,7 +175,7 @@ controlBox (ControlConfig restarts' autostart autorestart debug') app (Box c e) 
     dec r = do
       info "dec"
       cfg@(CBS _ n) <- readIORef r
-      writeIORef r (cfg {restartsLeft = n -1})
+      writeIORef r (cfg {restartsLeft = n - 1})
     start r s = do
       info "start"
       (CBS a _) <- readIORef r
