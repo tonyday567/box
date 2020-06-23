@@ -49,6 +49,7 @@ library
     , exceptions
     , foldl
     , lens
+    , mmorph
     , pipes
     , profunctors
     , protolude >= 0.3.0 && < 0.4

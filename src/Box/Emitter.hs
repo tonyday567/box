@@ -28,6 +28,7 @@ import Data.Functor.Constant
 import Data.Monoid
 import qualified Data.Text as Text
 import Data.Text (Text)
+import Control.Monad.Morph
 
 -- | an `Emitter` "emits" values of type a. A Source & a Producer (of a's) are the two other alternative but overloaded metaphors out there.
 --
@@ -36,6 +37,9 @@ newtype Emitter m a
   = Emitter
       { emit :: m (Maybe a)
       }
+
+instance MFunctor Emitter where
+  hoist nat (Emitter e) = Emitter (nat e)
 
 instance (Functor m) => Functor (Emitter m) where
   fmap f m = Emitter (fmap (fmap f) (emit m))
@@ -85,7 +89,7 @@ instance (Alternative m, Monad m) => Monoid (Emitter m a) where
 
 -- | lift an STM emitter
 liftE :: (MonadConc m) => Emitter (STM m) a -> Emitter m a
-liftE = Emitter . atomically . emit
+liftE = hoist atomically
 
 -- | like a monadic mapMaybe. (See [witherable](https://hackage.haskell.org/package/witherable))
 emap :: (Monad m) => (a -> m (Maybe b)) -> Emitter m a -> Emitter m b

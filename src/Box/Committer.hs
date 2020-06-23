@@ -23,6 +23,7 @@ import Data.Functor.Constant
 import Data.Functor.Contravariant.Divisible
 import Data.Monoid (First (..))
 import Data.Void (absurd)
+import Control.Monad.Morph
 
 -- | a Committer a "commits" values of type a. A Sink and a Consumer are some other metaphors for this.
 --
@@ -31,6 +32,9 @@ newtype Committer m a
   = Committer
       { commit :: a -> m Bool
       }
+
+instance MFunctor Committer where
+  hoist nat (Committer c) = Committer $ nat . c
 
 instance (Applicative m) => Semigroup (Committer m a) where
   (<>) i1 i2 = Committer (\a -> (||) <$> commit i1 a <*> commit i2 a)
@@ -65,7 +69,7 @@ instance (Applicative m) => Decidable (Committer m) where
 
 -- | lift a committer from STM
 liftC :: (MonadConc m) => Committer (STM m) a -> Committer m a
-liftC c = Committer $ atomically . commit c
+liftC = hoist atomically
 
 -- | This is a contramapMaybe, if such a thing existed, as the contravariant version of a mapMaybe.  See [witherable](https://hackage.haskell.org/package/witherable)
 cmap :: (Monad m) => (b -> m (Maybe a)) -> Committer m a -> Committer m b

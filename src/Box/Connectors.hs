@@ -26,6 +26,7 @@ module Box.Connectors
     contCommit,
     fromListE,
     toListE,
+    unlistE,
   )
 where
 
@@ -38,6 +39,8 @@ import Box.Queue
 import Control.Concurrent.Classy.Async as C
 import Control.Monad
 import Control.Monad.Conc.Class as C
+import Control.Monad.Trans.State.Lazy
+import Control.Monad.Morph
 
 -- * primitives
 
@@ -204,3 +207,14 @@ toListE ce = with ce (go [])
         Nothing -> pure (reverse xs)
         Just x' -> go (x':xs) e
 
+-- | convert a list emitter to a Stateful element emitter
+unlistE :: (Monad m) => Emitter m [a] -> Emitter (StateT [a] m) a
+unlistE es = emap unlistS (hoist lift es)
+  where
+    unlistS xs = do
+      rs <- get
+      case rs<>xs of
+        [] -> pure Nothing
+        (x:xs') -> do
+          put xs'
+          pure (Just x)

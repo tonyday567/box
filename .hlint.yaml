@@ -3,7 +3,7 @@
 - ignore: {name: Unnecessary hiding}
 - ignore: {name: Use readTVarIO}
 - ignore: {name: Reduce duplication}
-
+- ignore: {name: Use tuple-section}
 
 # To generate a suitable file for HLint do:
 # $ hlint --default > .hlint.yaml
