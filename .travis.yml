@@ -8,7 +8,7 @@ cache:
     - $HOME/.stack
     - $TRAVIS_BUILD_DIR/.stack-work
 
-cabal: "3.0"
+cabal: "2.4"
 
 matrix:
   include:
