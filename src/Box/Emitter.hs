@@ -125,9 +125,9 @@ keeps k (Emitter emit_) = Emitter emit_'
             Just b -> return (Just b)
     match = getFirst . getConstant . k (Constant . First . Just)
 
--- | attoparsec parse emitter
+-- | parse emitter which returns the original text on failure
 eParse :: (Functor m) => A.Parser a -> Emitter m Text -> Emitter m (Either Text a)
-eParse parser e = either (Left . Text.pack) Right . A.parseOnly parser <$> e
+eParse parser e = (\t -> either (const $ Left t) Right (A.parseOnly parser t)) <$> e
 
 -- | read parse emitter
 eRead ::
