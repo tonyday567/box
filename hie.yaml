@@ -1,0 +1,6 @@
+cradle:
+  stack:
+    - path: "./src/"
+      component: "box:lib"
+    - path: "./test/"
+      component: "box:test"

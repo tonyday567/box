@@ -281,7 +281,7 @@ controlBoxProcess (ControlConfig restarts' autostart _ debug') pc (Box c e) = do
       link wo
     lloop0 o = do
       b <- hIsEOF o
-      when (not b) (checkOutH o >> lloop0 o)
+      unless b (checkOutH o >> lloop0 o)
     checkOutH o = do
       info "waiting for process output"
       t <- Text.hGetLine o

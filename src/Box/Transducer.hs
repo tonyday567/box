@@ -12,7 +12,6 @@ module Box.Transducer
   ( Transducer (..),
     etc,
     etcM,
-    asPipe,
   )
 where
 
@@ -26,10 +25,7 @@ import Control.Lens hiding ((.>), (:>), (<|), (|>))
 import Control.Monad.Base (MonadBase, liftBase)
 import Control.Monad.Conc.Class as C
 import Control.Monad.Trans.State.Lazy
-import qualified Pipes
-import qualified Pipes.Prelude as Pipes
 import Streaming (Of (..), Stream)
-import qualified Streaming.Prelude as S
 import Prelude hiding ((.), id)
 
 -- | transduction
@@ -48,13 +44,6 @@ instance Category (Transducer s) where
   (Transducer t1) . (Transducer t2) = Transducer (t1 . t2)
 
   id = Transducer id
-
--- | convert a Pipe to a Transducer
-asPipe ::
-  (Monad m) =>
-  Pipes.Pipe a b (StateT s m) () ->
-  (Stream (Of a) (StateT s m) () -> Stream (Of b) (StateT s m) ())
-asPipe p s = ((s & Pipes.unfoldr S.next) Pipes.>-> p) & S.unfoldr Pipes.next
 
 -- | emit - transduce - commit
 --

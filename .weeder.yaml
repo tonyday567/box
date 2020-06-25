@@ -1,7 +1,0 @@
-- package:
-  - name: box
-  - section:
-    - name: test:test
-    - message:
-      - name: Redundant build-depends entry
-      - depends: base
