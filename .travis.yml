@@ -14,17 +14,14 @@ matrix:
   include:
       # --system-ghc is used to take advantage of language: haskell and save build time. If the stack resolver ghc and system-ghc become different, stack will download the right ghc
     - env: BUILD=cabal
-      ghc: "8.8.3"
+      ghc: "8.10.1"
     - env: BUILD=stack ARGS="--system-ghc"
-      ghc: "8.8.3"
+      ghc: "8.10.1"
       # a -Werror build that is allowed to fail
     - env: BUILD=werror ARGS="--system-ghc"
-      ghc: "8.8.3"
-    - env: BUILD=stack ARGS="--resolver nightly --system-ghc"
-      ghc: "8.8.3"
+      ghc: "8.10.1"
 
   allow_failures:
-    - env: BUILD=stack ARGS="--resolver nightly --system-ghc"
     - env: BUILD=werror ARGS="--system-ghc"
     - env: BUILD=cabal
 
