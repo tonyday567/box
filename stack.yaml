@@ -9,3 +9,6 @@ extra-deps:
   - git: https://github.com/tonyday567/numhask
     commit: 37ee8dced120f60a511baa6bb6c7ac382b1e8827
     subdir: numhask-prelude
+  - git: https://github.com/tonyday567/numhask
+    commit: 37ee8dced120f60a511baa6bb6c7ac382b1e8827
+    subdir: numhask
