@@ -1,11 +1,11 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE NoImplicitPrelude #-}
 {-# OPTIONS_GHC -Wall #-}
 {-# OPTIONS_GHC -fno-warn-type-defaults #-}
 
@@ -24,7 +24,7 @@ module Box.IO
     cStdout',
     eStdin',
     showStdout,
-    getLine,
+    Box.IO.getLine,
     putLine,
     consolePlug,
     emitLines,
@@ -50,21 +50,18 @@ import Box.Transducer
 import qualified Control.Concurrent.Classy.IORef as C
 import qualified Control.Foldl as L
 import Control.Lens hiding ((.>), (:>), (<|), (|>))
-import Control.Monad
 import qualified Control.Monad.Conc.Class as C
 import Control.Monad.Conc.Class (STM)
-import qualified Data.Text as Text
-import qualified Data.Text.IO as Text
+import Data.Text.IO (hGetLine)
+import NumHask.Prelude hiding (STM)
 import qualified Streaming.Prelude as S
-import System.IO hiding (getLine)
-import Protolude hiding (getLine, STM)
 
 -- * console
 
 -- | a single stdin committer action
 cStdin_ :: Committer (STM IO) Text -> IO ()
 cStdin_ c = do
-  a <- Text.getLine
+  a <- NumHask.Prelude.getLine
   void $ C.atomically $ commit c a
 
 -- | a finite stdin committer action
@@ -89,7 +86,7 @@ eStdout_ e = do
   a <- C.atomically $ emit e
   case a of
     Nothing -> pure ()
-    Just a' -> Text.putStrLn a'
+    Just a' -> putStrLn a'
 
 -- | a single stdout emitter action
 eStdoutM_ :: Emitter IO Text -> IO ()
@@ -97,7 +94,7 @@ eStdoutM_ e = do
   a <- emit e
   case a of
     Nothing -> pure ()
-    Just a' -> Text.putStrLn a'
+    Just a' -> putStrLn a'
 
 -- | a finite stdout emitter action
 eStdout :: Int -> Emitter (STM IO) Text -> IO ()
@@ -125,12 +122,12 @@ eStdin' = cStdin' & emitPlug
 
 -- | show to stdout
 showStdout :: Show a => Cont IO (Committer (STM IO) a)
-showStdout = contramap (Text.pack . show) <$> (cStdout 1000 :: Cont IO (Committer (STM IO) Text))
+showStdout = contramap (pack . show) <$> (cStdout 1000 :: Cont IO (Committer (STM IO) Text))
 
 -- | Get a single line from a handle.
 getLine_ :: Handle -> Committer (STM IO) Text -> IO ()
 getLine_ h c = do
-  a <- Text.hGetLine h
+  a <- hGetLine h
   void $ C.atomically $ commit c a
 
 -- | Get lines from a handle forever.
@@ -143,12 +140,11 @@ putLine_ h e = do
   a <- C.atomically $ emit e
   case a of
     Nothing -> pure ()
-    Just a' -> Text.hPutStrLn h a'
+    Just a' -> hPutStrLn h a'
 
 -- | a forever getLine committer action
 putLine :: Handle -> Emitter (STM IO) Text -> IO ()
 putLine h = forever . putLine_ h
-
 
 -- | console box
 -- > etc () (Trans $ \s -> s & S.takeWhile (/="q") & S.map ("echo: " <>)) (console 5)
@@ -156,10 +152,11 @@ consolePlug :: Int -> Cont IO (Box (STM IO) Text Text)
 consolePlug n = boxPlug (eStdout n) (cStdin n)
 
 -- * file operations
+
 -- | Emits lines of Text from a handle.
 emitLines :: Handle -> Emitter IO Text
 emitLines h = Emitter $ do
-  l :: (Either IOException Text) <- try (Text.hGetLine h)
+  l :: (Either IOException Text) <- try (hGetLine h)
   pure $ case l of
     Left _ -> Nothing
     Right a -> bool (Just a) Nothing (a == "")
@@ -167,7 +164,7 @@ emitLines h = Emitter $ do
 -- | Commit lines of Text to a handle.
 commitLines :: Handle -> Committer IO Text
 commitLines h = Committer $ \a -> do
-  Text.hPutStrLn h a
+  hPutStrLn h a
   pure True
 
 fileEmitter :: FilePath -> Cont IO (Emitter IO Text)
@@ -180,6 +177,7 @@ appendCommitter :: FilePath -> Cont IO (Committer IO Text)
 appendCommitter fp = Cont $ \cio -> withFile fp AppendMode (cio . commitLines)
 
 -- * concurrent refs
+
 -- | commit to a list CRef
 cCRef :: (C.MonadConc m) => m (C.IORef m [b], Cont m (Committer (C.STM m) b), m [b])
 cCRef = do

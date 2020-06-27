@@ -11,13 +11,13 @@ module Box.Broadcast
   )
 where
 
-import Prelude
 import Box.Committer
 import Box.Cont
 import Box.Emitter
 import Box.Queue
 import Control.Concurrent.Classy.STM as C
 import Control.Monad.Conc.Class as C
+import NumHask.Prelude hiding (STM, atomically)
 
 -- | a broadcaster
 newtype Broadcaster m a

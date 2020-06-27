@@ -30,17 +30,14 @@ module Box.Connectors
   )
 where
 
-import Prelude
 import Box.Box
 import Box.Committer
 import Box.Cont
 import Box.Emitter
 import Box.Queue
 import Control.Concurrent.Classy.Async as C
-import Control.Monad
 import Control.Monad.Conc.Class as C
-import Control.Monad.Trans.State.Lazy
-import Control.Monad.Morph
+import NumHask.Prelude hiding (STM, atomically)
 
 -- * primitives
 
@@ -191,7 +188,7 @@ fromListE xs = Cont $ queueEM' (eListC (Emitter . pure . Just <$> xs))
 
 eListC :: (Monad m) => [Emitter m a] -> Committer m a -> m ()
 eListC [] _ = pure ()
-eListC (e:es) c = do
+eListC (e : es) c = do
   x <- emit e
   case x of
     Nothing -> pure ()
@@ -205,7 +202,7 @@ toListE ce = with ce (go [])
       x <- emit e
       case x of
         Nothing -> pure (reverse xs)
-        Just x' -> go (x':xs) e
+        Just x' -> go (x' : xs) e
 
 -- | convert a list emitter to a Stateful element emitter
 unlistE :: (Monad m) => Emitter m [a] -> Emitter (StateT [a] m) a
@@ -213,8 +210,8 @@ unlistE es = emap unlistS (hoist lift es)
   where
     unlistS xs = do
       rs <- get
-      case rs<>xs of
+      case rs <> xs of
         [] -> pure Nothing
-        (x:xs') -> do
+        (x : xs') -> do
           put xs'
           pure (Just x)

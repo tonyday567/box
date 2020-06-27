@@ -4,3 +4,7 @@ cradle:
       component: "box:lib"
     - path: "./test/"
       component: "box:test"
+    - path: "./app/concurrency-tests.hs"
+      component: "box:exe:concurrency-tests"
+    - path: "./app/websocket-tests.hs"
+      component: "box:exe:websocket-tests"

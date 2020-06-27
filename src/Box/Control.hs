@@ -33,28 +33,17 @@ module Box.Control
 where
 
 import Box
-import Control.Applicative
-import Control.Concurrent.Async
 import Control.Concurrent.Classy.IORef as C
 import Control.Concurrent.Classy.STM.TVar as C
 import Control.Lens hiding ((|>))
-import Control.Monad
 import Control.Monad.Conc.Class as C
 import Control.Monad.STM.Class as C
-import Control.Monad.Trans.Class
 import qualified Data.Attoparsec.Text as A
-import Data.Bool
-import Data.Data
-import Data.Functor
-import Data.Maybe
-import qualified Data.Text as Text
-import Data.Text (Text)
-import qualified Data.Text.IO as Text
-import GHC.Generics
+import Data.Text.IO (hGetLine)
+import NumHask.Prelude hiding (STM, atomically)
 import qualified Streaming.Prelude as S
-import System.IO
+import System.IO (hFlush, hIsEOF)
 import System.Process.Typed
-import Prelude
 
 -- | request ADT
 data ControlRequest
@@ -63,7 +52,7 @@ data ControlRequest
   | Stop -- cancel (without shutting down) idempotent
   | Reset -- stop and start (potentially cancelling a previous instance)
   | Quit -- stop & shutdown
-  deriving (Show, Read, Eq, Data, Typeable, Generic)
+  deriving (Show, Read, Eq, Typeable, Generic)
 
 -- | Parse command line requests
 parseControlRequest :: A.Parser a -> A.Parser (Either ControlRequest a)
@@ -112,7 +101,7 @@ defaultControlConfig = ControlConfig 1 False Nothing False
 consoleControlBox :: ControlBox Text Text IO
 consoleControlBox =
   Box
-    <$> ( contramap (Text.pack . show)
+    <$> ( contramap (pack . show)
             <$> (cStdout 1000 :: Cont IO (Committer (STM IO) Text))
         )
     <*> ( emap (pure . either (const Nothing) Just)
@@ -154,7 +143,7 @@ controlBox (ControlConfig restarts' autostart autorestart debug') app (Box c e) 
       writeIORef r (CBS Nothing n)
     shutCheck s = do
       info "shutCheck"
-      atomically $ check =<< readTVar s
+      atomically $ C.check =<< readTVar s
       info "shutCheck signal received"
     status r = do
       info "status"
@@ -257,7 +246,7 @@ controlBoxProcess (ControlConfig restarts' autostart _ debug') pc (Box c e) = do
       writeIORef r (CBP Nothing Nothing (restarts a))
     shutCheck s = do
       info "shutCheck"
-      atomically $ check =<< readTVar s
+      atomically $ C.check =<< readTVar s
       info "shutCheck signal received"
     status r = do
       info "status"
@@ -284,7 +273,7 @@ controlBoxProcess (ControlConfig restarts' autostart _ debug') pc (Box c e) = do
       unless b (checkOutH o >> lloop0 o)
     checkOutH o = do
       info "waiting for process output"
-      t <- Text.hGetLine o
+      t <- hGetLine o
       info ("received: " <> t)
       C.atomically $ void $ commit (contramap Right c) t
     dec r = do
@@ -320,7 +309,7 @@ controlBoxProcess (ControlConfig restarts' autostart _ debug') pc (Box c e) = do
       p <- process <$> C.readIORef r
       maybe
         (info "no stdin available")
-        (\i -> hPutStrLn (getStdin i) (Text.unpack t) >> hFlush (getStdin i))
+        (\i -> hPutStrLn (getStdin i) (unpack t) >> hFlush (getStdin i))
         p
     go r s = do
       info "go"
@@ -346,7 +335,7 @@ controlConsole ::
   Cont IO (Box (STM IO) (Either ControlResponse Text) (Either ControlRequest Text))
 controlConsole =
   Box
-    <$> ( contramap (either (("Response: " <>) . Text.pack . show) id)
+    <$> ( contramap (either (("Response: " <>) . show) id)
             <$> (cStdout 1000 :: Cont IO (Committer (STM IO) Text))
         )
     <*> ( fmap (either (Right . ("parse error: " <>)) id)
@@ -355,7 +344,7 @@ controlConsole =
 
 -- | action for testing
 beep :: Int -> Int -> Double -> IO ()
-beep m x s = when (x <= m) (sleep s >> Text.putStrLn ("beep " <> Text.pack (show x)) >> beep m (x + 1) s)
+beep m x s = when (x <= m) (sleep s >> putStrLn ("beep " <> show x :: Text) >> beep m (x + 1) s)
 
 -- | A box with a self-destruct timer.
 timeOut :: Double -> ControlBox m a b

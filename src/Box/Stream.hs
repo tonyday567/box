@@ -21,14 +21,13 @@ module Box.Stream
   )
 where
 
-import Prelude
 import Box.Committer
 import Box.Cont
 import Box.Emitter
 import Box.Queue
 import qualified Control.Foldl as L
-import Control.Monad
 import Control.Monad.Conc.Class as C
+import NumHask.Prelude hiding (STM, atomically)
 import Streaming (Of (..), Stream)
 import qualified Streaming.Prelude as S
 

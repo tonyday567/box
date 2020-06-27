@@ -11,9 +11,7 @@ module Box.Cont
   )
 where
 
-import Prelude
-import Control.Applicative
-import Control.Monad.IO.Class (MonadIO (liftIO))
+import NumHask.Prelude hiding (STM, atomically)
 
 -- | A continuation similar to ` Control.Monad.ContT` but where the result type is swallowed by an existential
 newtype Cont m a
@@ -25,13 +23,11 @@ instance Functor (Cont m) where
   fmap f mx = Cont (\return_ -> mx `with` \x -> return_ (f x))
 
 instance Applicative (Cont m) where
-
   pure r = Cont (\return_ -> return_ r)
 
   mf <*> mx = Cont (\return_ -> mf `with` \f -> mx `with` \x -> return_ (f x))
 
 instance Monad (Cont m) where
-
   return r = Cont (\return_ -> return_ r)
 
   ma >>= f = Cont (\return_ -> ma `with` \a -> f a `with` \b -> return_ b)
@@ -48,7 +44,6 @@ instance (Semigroup a) => Semigroup (Cont m a) where
   (<>) = liftA2 (<>)
 
 instance (Functor m, Semigroup a, Monoid a) => Monoid (Cont m a) where
-
   mempty = pure mempty
 
   mappend = (<>)
@@ -63,13 +58,11 @@ instance Functor (Cont_ m) where
   fmap f mx = Cont_ (\return_ -> mx `with_` \x -> return_ (f x))
 
 instance Applicative (Cont_ m) where
-
   pure r = Cont_ (\return_ -> return_ r)
 
   mf <*> mx = Cont_ (\return_ -> mf `with_` \f -> mx `with_` \x -> return_ (f x))
 
 instance Monad (Cont_ m) where
-
   return r = Cont_ (\return_ -> return_ r)
 
   ma >>= f = Cont_ (\return_ -> ma `with_` \a -> f a `with_` \b -> return_ b)
@@ -86,7 +79,6 @@ instance (Semigroup a) => Semigroup (Cont_ m a) where
   (<>) = liftA2 (<>)
 
 instance (Functor m, Semigroup a, Monoid a) => Monoid (Cont_ m a) where
-
   mempty = pure mempty
 
   mappend = (<>)

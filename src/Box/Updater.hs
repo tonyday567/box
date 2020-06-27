@@ -11,12 +11,12 @@ module Box.Updater
   )
 where
 
-import Prelude
 import Box
 import Control.Foldl (Fold (..), FoldM (..))
 import qualified Control.Foldl as Foldl
 import Control.Monad.Conc.Class as C
 import qualified GHC.Conc
+import NumHask.Prelude hiding (STM, atomically)
 
 -- | An updater of a value a, where the updating process consists of an IO fold over an emitter
 data Updater a
@@ -51,7 +51,6 @@ onRight (FoldM step begin done) = FoldM step' begin done
     step' x _ = return x
 
 instance Applicative Updater where
-
   pure a = Updater (pure a) mempty
 
   (Updater foldL eL) <*> (Updater foldR eR) = Updater foldT eT

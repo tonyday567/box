@@ -25,10 +25,8 @@ import Box.Control
 import Control.Lens
 import Control.Monad.Managed
 import Data.Generics.Labels ()
-import qualified Data.Text as Text
-import GHC.Generics
 import qualified Network.WebSockets as WS
-import Protolude hiding (STM)
+import NumHask.Prelude hiding (STM)
 
 data ConfigSocket
   = ConfigSocket
@@ -41,10 +39,10 @@ defaultConfigSocket :: ConfigSocket
 defaultConfigSocket = ConfigSocket "127.0.0.1" 9160
 
 client :: ConfigSocket -> WS.ClientApp () -> IO ()
-client c = WS.runClient (Text.unpack $ c ^. #host) (c ^. #port) "/"
+client c = WS.runClient (unpack $ c ^. #host) (c ^. #port) "/"
 
 server :: ConfigSocket -> WS.ServerApp -> IO ()
-server c = WS.runServer (Text.unpack $ c ^. #host) (c ^. #port)
+server c = WS.runServer (unpack $ c ^. #host) (c ^. #port)
 
 mconn :: WS.PendingConnection -> Managed WS.Connection
 mconn p =

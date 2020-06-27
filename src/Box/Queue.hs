@@ -32,15 +32,14 @@ module Box.Queue
   )
 where
 
-import Prelude
 import Box.Box
 import Box.Committer
 import Box.Emitter
-import Control.Applicative
 import Control.Concurrent.Classy.Async as C
 import Control.Concurrent.Classy.STM as C
 import Control.Monad.Catch as C
 import Control.Monad.Conc.Class as C
+import NumHask.Prelude hiding (STM, atomically)
 
 -- | 'Queue' specifies how messages are queued
 data Queue a
@@ -129,25 +128,25 @@ toBoxM q = do
 -- | wait for the first action, and then cancel the second
 waitCancel :: (MonadConc m) => m b -> m a -> m b
 waitCancel a b =
-  withAsync a $ \a' ->
-    withAsync b $ \b' -> do
-      a'' <- wait a'
-      cancel b'
+  C.withAsync a $ \a' ->
+    C.withAsync b $ \b' -> do
+      a'' <- C.wait a'
+      C.cancel b'
       pure a''
 
 -- | run two actions concurrently, but wait and return on the left result.
 concurrentlyLeft :: MonadConc m => m a -> m b -> m a
 concurrentlyLeft left right =
-  withAsync left $ \a ->
-    withAsync right $ \_ ->
-      wait a
+  C.withAsync left $ \a ->
+    C.withAsync right $ \_ ->
+      C.wait a
 
 -- | run two actions concurrently, but wait and return on the right result.
 concurrentlyRight :: MonadConc m => m a -> m b -> m b
 concurrentlyRight left right =
-  withAsync left $ \_ ->
-    withAsync right $ \b ->
-      wait b
+  C.withAsync left $ \_ ->
+    C.withAsync right $ \b ->
+      C.wait b
 
 -- | connect a committer and emitter action via spawning a queue, and wait for both to complete.
 withQ ::
@@ -162,7 +161,7 @@ withQ q spawner cio eio =
     (atomically $ spawner q)
     (\(_, seal) -> atomically seal)
     ( \(box, seal) ->
-        concurrently
+        C.concurrently
           (cio (committer box) `C.finally` atomically seal)
           (eio (emitter box) `C.finally` atomically seal)
     )
@@ -216,7 +215,7 @@ withQM q spawner cio eio =
     (spawner q)
     snd
     ( \(box, seal) ->
-        concurrently
+        C.concurrently
           (cio (committer box) `C.finally` seal)
           (eio (emitter box) `C.finally` seal)
     )
@@ -256,7 +255,6 @@ withQCM q spawner cio eio =
           (cio (committer box) `C.finally` seal)
           (eio (emitter box) `C.finally` seal)
     )
-
 
 -- | create an unbounded queue
 queue ::
@@ -328,7 +326,6 @@ queueEM' ::
   (Emitter m a -> m r) ->
   m r
 queueEM' cm em = withQEM Unbounded toBoxM cm em
-
 
 -- |
 --

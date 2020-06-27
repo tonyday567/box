@@ -19,16 +19,9 @@ module Box.Emitter
   )
 where
 
-import Prelude
-import Control.Applicative
-import Control.Monad
 import Control.Monad.Conc.Class as C
 import qualified Data.Attoparsec.Text as A
-import Data.Functor.Constant
-import Data.Monoid
-import qualified Data.Text as Text
-import Data.Text (Text)
-import Control.Monad.Morph
+import NumHask.Prelude hiding (STM, atomically)
 
 -- | an `Emitter` "emits" values of type a. A Source & a Producer (of a's) are the two other alternative but overloaded metaphors out there.
 --
@@ -45,13 +38,11 @@ instance (Functor m) => Functor (Emitter m) where
   fmap f m = Emitter (fmap (fmap f) (emit m))
 
 instance (Applicative m) => Applicative (Emitter m) where
-
   pure r = Emitter (pure (pure r))
 
   mf <*> mx = Emitter ((<*>) <$> emit mf <*> emit mx)
 
 instance (Monad m) => Monad (Emitter m) where
-
   return r = Emitter (return (return r))
 
   m >>= f =
@@ -62,7 +53,6 @@ instance (Monad m) => Monad (Emitter m) where
         Just a -> emit (f a)
 
 instance (Monad m, Alternative m) => Alternative (Emitter m) where
-
   empty = Emitter (pure Nothing)
 
   x <|> y =
@@ -73,7 +63,6 @@ instance (Monad m, Alternative m) => Alternative (Emitter m) where
         Just a -> pure (Just a)
 
 instance (Alternative m, Monad m) => MonadPlus (Emitter m) where
-
   mzero = empty
 
   mplus = (<|>)
@@ -82,7 +71,6 @@ instance (Alternative m, Monad m) => Semigroup (Emitter m a) where
   (<>) = (<|>)
 
 instance (Alternative m, Monad m) => Monoid (Emitter m a) where
-
   mempty = empty
 
   mappend = (<>)
@@ -134,9 +122,9 @@ eRead ::
   (Functor m, Read a) =>
   Emitter m Text ->
   Emitter m (Either Text a)
-eRead = fmap $ parsed . Text.unpack
+eRead = fmap $ parsed . unpack
   where
     parsed str =
       case reads str of
         [(a, "")] -> Right a
-        _ -> Left (Text.pack str)
+        _ -> Left (pack str)

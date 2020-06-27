@@ -1,3 +1,4 @@
+{-# LANGUAGE RebindableSyntax #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -17,7 +18,7 @@
 --
 module Main where
 
-import Prelude
+import NumHask.Prelude hiding (STM)
 import Control.Monad.Conc.Class as C
 import Control.Concurrent.Classy.STM as C
 import Box.Box
@@ -30,22 +31,14 @@ import Box.IO
 import Box.Queue
 import Box.Stream
 import Box.Transducer
-import Control.Monad.IO.Class
-import Data.Text (Text)
-import qualified Data.Text as Text
-import qualified Data.Text.IO as Text
-import Test.DejaFu
+import Test.DejaFu hiding (get)
 import Test.DejaFu.Types
 import qualified Streaming.Prelude as S
 import System.Random
 import Control.Lens hiding ((:>), (.>), (<|), (|>))
 import Control.Concurrent.Classy.Async as C
-import qualified Control.Monad.Trans.State as Trans
 import Data.Generics.Labels ()
 import Data.Generics.Product
-import GHC.Generics
-import Control.Monad.State.Lazy
-import Control.Applicative
 
 -- | the test box is a pure list emitter into an IORef appending list
 testBox :: (MonadConc m) => Int -> m (Cont m (Box (STM m) Int Int), m [Int])
@@ -99,8 +92,8 @@ exe1c2IO n = e1c2IO (toEmit (S.take n $ S.each [0..]))
 
 -- | test when the deterministic takes too long (which is almost always)
 t :: (MonadIO n, Eq b, Show b, MonadDejaFu n) =>
-     String -> ConcT n b -> n Bool
-t l c = dejafuWay (randomly (mkStdGen 42) 1000) defaultMemType l alwaysSame c
+     Text -> ConcT n b -> n Bool
+t l c = dejafuWay (randomly (mkStdGen 42) 1000) defaultMemType (unpack l) alwaysSame c
 
 main :: IO ()
 main = do
@@ -161,7 +154,7 @@ exc' n = do
   fuse (pure . pure) (Box <$> (liftC <$> c1) <*> e1)
   fuse (pure . pure) (Box <$> (liftC <$> c2) <*> e2)
   eres <- readIORef eref
-  liftIO $ Text.putStrLn $ "eref: " <> Text.pack (show eres)
+  liftIO $ putStrLn ("eref: " <> show eres :: Text)
   (,) <$> r1 <*> r2
 
 -- | a broadcaster 
@@ -174,7 +167,7 @@ broadcast' :: (Show a, MonadConc m, MonadIO m) => m (Broadcaster' m a, Committer
 broadcast' = do
   ref <- C.atomically $ C.newTVar mempty
   let com = Committer $ \a -> do
-        liftIO $ Text.putStrLn $ "broadcaster': " <> Text.pack (show a)
+        liftIO $ putStrLn ("broadcaster': " <> show a :: Text)
         c <- C.atomically $ C.readTVar ref
         commit c a
   pure (Broadcaster' ref, com)
@@ -192,9 +185,9 @@ fuse_' e c = go
   where
     go = do
       a <- emit e
-      liftIO $ Text.putStrLn $ "fuse_' emit: " <> Text.pack (show a)
+      liftIO $ putStrLn ("fuse_' emit: " <> show a :: Text)
       c' <- maybe (pure False) (commit c) a
-      liftIO $ Text.putStrLn $ "fuse_' commit: " <> Text.pack (show c')
+      liftIO $ putStrLn ("fuse_' commit: " <> show c' :: Text)
       when c' go
 
 fuse' :: (Show b, MonadIO m) => (a -> m (Maybe b)) -> Cont m (Box m b a) -> m ()
@@ -255,23 +248,22 @@ counter :: (MonadState Int m) => Int -> StateT Int m (Emitter m Int)
 counter n =
   pure $
     Emitter $ do
-        a <- Control.Monad.State.Lazy.get
+        a <- NumHask.Prelude.get
         case a < n of
           False -> pure Nothing
           True -> do
             put $ a + 1
             pure (Just a)
 
-counterT :: (Num a, Ord a, Monad m) => a -> Emitter (StateT a m) a
+counterT :: (Additive a, FromInteger a, Ord a, Monad m) => a -> Emitter (StateT a m) a
 counterT n =
     Emitter $ do
-        a <- Trans.get
+        a <- get
         case a < n of
           False -> pure Nothing
           True -> do
-            Trans.put $ a + 1
+            put $ a + 1
             pure (Just a)
-
 
 rememberer :: (MonadState [Int] m) => StateT [Int] m (Committer m Int)
 rememberer =
@@ -283,7 +275,7 @@ rememberer =
 remembererT :: (Monad m) => Committer (StateT [a] m) a
 remembererT =
     Committer $ \a -> do
-        Trans.modify (a:)
+        modify (a:)
         pure True
 
 
@@ -307,7 +299,7 @@ boxCount n = Box <$> pure rememberer' <*> pure counter' where
         #result %= (a:)
         pure True
 
-countEmitter :: (Ord a, Num a, MonadState s m, Data.Generics.Product.HasField "count" s s a a) => a -> Emitter m a
+countEmitter :: (Ord a, Num a, FromInteger a, MonadState s m, Data.Generics.Product.HasField "count" s s a a) => a -> Emitter m a
 countEmitter n = Emitter $ do
   a <- use (field @"count")
   case a < n of

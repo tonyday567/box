@@ -18,13 +18,13 @@ module Box.Plugs
   )
 where
 
-import Prelude
 import Box.Box
 import Box.Committer
 import Box.Cont
 import Box.Emitter
 import Box.Queue
 import GHC.Conc
+import NumHask.Prelude hiding (STM, atomically)
 
 -- * plugs
 

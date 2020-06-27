@@ -20,13 +20,11 @@ import Box.Committer
 import Box.Cont
 import Box.Emitter
 import Box.Stream
-import Control.Category (Category (..))
 import Control.Lens hiding ((.>), (:>), (<|), (|>))
 import Control.Monad.Base (MonadBase, liftBase)
 import Control.Monad.Conc.Class as C
-import Control.Monad.Trans.State.Lazy
+import NumHask.Prelude hiding (STM, atomically)
 import Streaming (Of (..), Stream)
-import Prelude hiding ((.), id)
 
 -- | transduction
 -- [wiki](https://en.wikipedia.org/wiki/Transducer) says: "A transducer is a device that converts energy from one form to another." Translated to context, this Transducer converts a stream of type a to a stream of a different type.
@@ -40,7 +38,6 @@ newtype Transducer s a b
       }
 
 instance Category (Transducer s) where
-
   (Transducer t1) . (Transducer t2) = Transducer (t1 . t2)
 
   id = Transducer id

@@ -26,7 +26,6 @@ module Box
     module Box.Stream,
     module Box.Time,
     module Box.Transducer,
-    (&),
   )
 where
 
@@ -42,7 +41,6 @@ import Box.Queue
 import Box.Stream
 import Box.Time
 import Box.Transducer
-import Control.Lens ((&))
 
 -- $setup
 -- >>> :set -XOverloadedStrings
@@ -54,13 +52,11 @@ import Control.Lens ((&))
 -- >>> import Data.Text (Text)
 -- >>> import qualified Data.Text as Text
 -- >>> import Control.Applicative
+-- >>> import Control.Lens ((&))
 -- >>> let committer' = cStdout 100
 -- >>> let emitter' = toEmit (S.each ["hi","bye","q","x"])
 -- >>> let box' = Box <$> committer' <*> emitter'
 -- >>> let transducer' = Transducer $ \s -> s & S.takeWhile (/="q") & S.map ("echo: " <>)
-
--- toEmit . S.each
---
 
 -- | emitting
 -- > toListE . fromListE :: [a] -> IO [a]
@@ -68,8 +64,6 @@ import Control.Lens ((&))
 -- [1,2,3]
 --
 -- > fuse (pure . Just) $ Box <$> (liftC <$> showStdout) <*> (fromListE [1..3::Int])
-
-
 
 -- $commit
 -- committing

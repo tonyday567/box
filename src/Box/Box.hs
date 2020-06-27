@@ -15,12 +15,11 @@ module Box.Box
   )
 where
 
-import Prelude
 import Box.Committer
 import Box.Emitter
-import Control.Applicative
 import Control.Lens hiding ((.>), (:>), (<|), (|>))
 import Control.Monad.Conc.Class
+import NumHask.Prelude hiding (STM)
 
 -- | A Box is a product of a Committer m and an Emitter. Think of a box with an incoming wire and an outgoing wire. Now notice that the abstraction is reversable: are you looking at two wires from "inside a box"; a blind erlang grunt communicating with the outside world via the two thin wires, or are you looking from "outside the box"; interacting with a black box object. Either way, it's a box.
 -- And either way, the committer is contravariant and the emitter covariant so it forms a profunctor.
@@ -39,9 +38,7 @@ instance (Alternative m, Monad m) => Semigroup (Box m c e) where
   (<>) (Box c e) (Box c' e') = Box (c <> c') (e <> e')
 
 instance (Alternative m, Monad m) => Monoid (Box m c e) where
-
   mempty = Box mempty mempty
-
   mappend = (<>)
 
 -- | lift a box from STM

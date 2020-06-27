@@ -16,14 +16,10 @@ module Box.Committer
   )
 where
 
-import Prelude
 import Control.Lens hiding ((.>), (:>), (<|), (|>))
 import Control.Monad.Conc.Class as C
-import Data.Functor.Constant
 import Data.Functor.Contravariant.Divisible
-import Data.Monoid (First (..))
-import Data.Void (absurd)
-import Control.Monad.Morph
+import NumHask.Prelude hiding (STM, atomically)
 
 -- | a Committer a "commits" values of type a. A Sink and a Consumer are some other metaphors for this.
 --
@@ -40,7 +36,6 @@ instance (Applicative m) => Semigroup (Committer m a) where
   (<>) i1 i2 = Committer (\a -> (||) <$> commit i1 a <*> commit i2 a)
 
 instance (Applicative m) => Monoid (Committer m a) where
-
   mempty = Committer (\_ -> pure False)
 
   mappend = (<>)
@@ -49,7 +44,6 @@ instance Contravariant (Committer m) where
   contramap f (Committer a) = Committer (a . f)
 
 instance (Applicative m) => Divisible (Committer m) where
-
   conquer = Committer (\_ -> pure False)
 
   divide f i1 i2 =
@@ -58,7 +52,6 @@ instance (Applicative m) => Divisible (Committer m) where
         (b, c) -> (||) <$> commit i1 b <*> commit i2 c
 
 instance (Applicative m) => Decidable (Committer m) where
-
   lose f = Committer (absurd . f)
 
   choose f i1 i2 =
