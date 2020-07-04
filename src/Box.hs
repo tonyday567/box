@@ -59,8 +59,8 @@ import Box.Transducer
 -- >>> let transducer' = Transducer $ \s -> s & S.takeWhile (/="q") & S.map ("echo: " <>)
 
 -- | emitting
--- > toListE . fromListE :: [a] -> IO [a]
--- >>>  toListE . fromListE $ [1..3::Int]
+-- > flip (with . fmap toListE . fromListE) id == pure
+-- >>> with (fromListE [1..3]) toListE
 -- [1,2,3]
 --
 -- > fuse (pure . Just) $ Box <$> (liftC <$> showStdout) <*> (fromListE [1..3::Int])

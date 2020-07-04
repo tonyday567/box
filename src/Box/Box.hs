@@ -48,3 +48,6 @@ liftB (Box c e) = Box (liftC c) (liftE e)
 -- | a profunctor dimapMaybe
 bmap :: (Monad m) => (a' -> m (Maybe a)) -> (b -> m (Maybe b')) -> Box m a b -> Box m a' b'
 bmap fc fe (Box c e) = Box (cmap fc c) (emap fe e)
+
+
+

@@ -16,6 +16,10 @@ module Box.Emitter
     keeps,
     eRead,
     eParse,
+    addE,
+    postaddE,
+    toListE,
+    unlistE,
   )
 where
 
@@ -128,3 +132,42 @@ eRead = fmap $ parsed . unpack
       case reads str of
         [(a, "")] -> Right a
         _ -> Left (pack str)
+
+-- | adds a pre-emit monadic action to the emitter
+addE :: (Applicative m) =>
+    (Emitter m a -> m ())
+    -> Emitter m a
+    -> Emitter m a
+addE f e = Emitter $ f e *> emit e
+
+-- | adds a post-emit monadic action to the emitter
+postaddE :: (Monad m) =>
+    (Emitter m a -> m ())
+    -> Emitter m a
+    -> Emitter m a
+postaddE f e = Emitter $ do
+  r <- emit e
+  f e
+  pure r
+
+-- | turn a list into an emitter
+toListE :: (MonadConc m) => Emitter m a -> m [a]
+toListE e = go [] e
+  where
+    go xs e' = do
+      x <- emit e'
+      case x of
+        Nothing -> pure (reverse xs)
+        Just x' -> go (x' : xs) e'
+
+-- | convert a list emitter to a Stateful element emitter
+unlistE :: (Monad m) => Emitter m [a] -> Emitter (StateT [a] m) a
+unlistE es = emap unlistS (hoist lift es)
+  where
+    unlistS xs = do
+      rs <- get
+      case rs <> xs of
+        [] -> pure Nothing
+        (x : xs') -> do
+          put xs'
+          pure (Just x)

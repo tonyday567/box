@@ -10,9 +10,12 @@
 -- | `commit`
 module Box.Committer
   ( Committer (..),
+    drain,
     liftC,
     cmap,
     handles,
+    addC,
+    postaddC,
   )
 where
 
@@ -60,6 +63,12 @@ instance (Applicative m) => Decidable (Committer m) where
         Left b -> commit i1 b
         Right c -> commit i2 c
 
+-- | Do nothing with values that are committed.
+--
+-- This is useful for keeping the commit end of a box or pipeline open.
+drain :: (Applicative m) => Committer m a
+drain = Committer (\_ -> pure True)
+
 -- | lift a committer from STM
 liftC :: (MonadConc m) => Committer (STM m) a -> Committer m a
 liftC = hoist atomically
@@ -91,3 +100,21 @@ handles k (Committer commit_) =
     )
   where
     match = getFirst . getConstant . k (Constant . First . Just)
+
+-- | adds a monadic action to the committer
+addC :: (Applicative m) =>
+    (Committer m a -> m ())
+    -> Committer m a
+    -> Committer m a
+addC f c = Committer $ \a -> f c *> commit c a
+
+-- | adds a post-commit monadic action to the committer
+postaddC :: (Monad m) =>
+    (Committer m a -> m ())
+    -> Committer m a
+    -> Committer m a
+postaddC f c = Committer $ \a -> do
+  r <- commit c a
+  f c
+  pure r
+

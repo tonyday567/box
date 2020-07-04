@@ -54,6 +54,7 @@ library
   build-depends:
     attoparsec >= 0.13,
     base >=4.7 && <5,
+    comonad >= 5.0,
     concurrency >= 1.11,
     contravariant >= 1.5,
     exceptions >= 0.10,

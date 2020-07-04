@@ -10,6 +10,7 @@
 module Box.Connectors
   ( fuse_,
     fuseSTM_,
+    dotB,
     fuse,
     fuseSTM,
     forkEmit,
@@ -25,8 +26,7 @@ module Box.Connectors
     splitCommitSTM,
     contCommit,
     fromListE,
-    toListE,
-    unlistE,
+    singletonE,
   )
 where
 
@@ -42,6 +42,8 @@ import NumHask.Prelude hiding (STM, atomically)
 -- * primitives
 
 -- | fuse an emitter directly to a committer
+--
+-- The monadic action returns when either the emitter or committer finishes.
 fuse_ :: (Monad m) => Emitter m a -> Committer m a -> m ()
 fuse_ e c = go
   where
@@ -75,6 +77,10 @@ fuse f box = with box $ \(Box c e) -> fuse_ (emap f e) c
 fuseSTM :: (MonadConc m) => (a -> (STM m) (Maybe b)) -> Cont m (Box (STM m) b a) -> m ()
 fuseSTM f box = with box $ \(Box c e) -> fuseSTM_ (emap f e) c
 
+-- | composition of boxes
+dotB :: (Monad m) => Box m a b -> Box m b c -> m (Box m a c)
+dotB (Box c e) (Box c' e') = fuse_ e c' *> (pure $ Box c e')
+
 -- | fuse-branch an emitter
 forkEmit :: (Monad m) => Emitter m a -> Committer m a -> Emitter m a
 forkEmit e c =
@@ -84,7 +90,6 @@ forkEmit e c =
     pure a
 
 -- * buffer hookups
-
 -- | fuse a committer to a buffer
 fuseCommit :: (MonadConc m) => Committer (STM m) a -> Cont m (Committer (STM m) a)
 fuseCommit c = Cont $ \caction -> queueC' caction (`fuseSTM_` c)
@@ -192,26 +197,8 @@ eListC (e : es) c = do
   x <- emit e
   case x of
     Nothing -> pure ()
-    Just x' -> commit c x' >> eListC es c
+    Just x' -> commit c x' *> eListC es c
 
--- | turn a list into an emitter
-toListE :: (MonadConc m) => Cont m (Emitter m a) -> m [a]
-toListE ce = with ce (go [])
-  where
-    go xs e = do
-      x <- emit e
-      case x of
-        Nothing -> pure (reverse xs)
-        Just x' -> go (x' : xs) e
-
--- | convert a list emitter to a Stateful element emitter
-unlistE :: (Monad m) => Emitter m [a] -> Emitter (StateT [a] m) a
-unlistE es = emap unlistS (hoist lift es)
-  where
-    unlistS xs = do
-      rs <- get
-      case rs <> xs of
-        [] -> pure Nothing
-        (x : xs') -> do
-          put xs'
-          pure (Just x)
+-- | emit a single value in a very convoluted way
+singletonE :: a -> Cont IO (Emitter IO a)
+singletonE x = Cont $ queueEM' $ \c -> commit c x
