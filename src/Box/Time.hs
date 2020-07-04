@@ -114,6 +114,8 @@ emitWhen e =
       pure $ Just a) e
 
 -- | reset the emitter stamps to by in sync with the current time and adjust the speed
+-- >>> let e1 = fromListE (zipWith (\x a -> Stamped (addUTCTime (fromDouble x) t) a) [0..5] [0..5])
+--
 playback :: Double -> Emitter IO (Stamped a) -> IO (Emitter IO (Stamped a))
 playback speed e = do
   r <- emit e
@@ -122,7 +124,7 @@ playback speed e = do
     Just (Stamped u0 _) -> do
       t0 <- getCurrentTime
       let ua = diffUTCTime t0 u0
-      let delta u = addUTCTime ua $ addUTCTime (fromDouble ((toDouble $ diffUTCTime u u0) * speed)) u
+      let delta u = addUTCTime ua $ addUTCTime (fromDouble ((toDouble $ diffUTCTime u u0) * speed)) u0
       pure (emap (\(Stamped u a) -> pure (Just (Stamped (delta u) a))) e)
 
 -- | simulate a delay from a Stamped a emitter relative to the first timestamp
