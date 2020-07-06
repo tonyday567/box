@@ -43,7 +43,7 @@ import NumHask.Prelude hiding (STM, atomically)
 
 -- | fuse an emitter directly to a committer
 --
--- The monadic action returns when either the emitter or committer finishes.
+-- The monadic action returns when the committer finishes.
 fuse_ :: (Monad m) => Emitter m a -> Committer m a -> m ()
 fuse_ e c = go
   where

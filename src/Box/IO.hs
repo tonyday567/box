@@ -11,7 +11,9 @@
 
 -- | IO actions
 module Box.IO
-  ( cStdin_,
+  ( fromStdin,
+    toStdout,
+    cStdin_,
     cStdin,
     cStdin',
     eStdin,
@@ -56,7 +58,26 @@ import Data.Text.IO (hGetLine)
 import NumHask.Prelude hiding (STM)
 import qualified Streaming.Prelude as S
 
+-- $setup
+-- >>> :set -XOverloadedStrings
+
 -- * console
+-- | emit Text from stdin inputs
+--
+-- >>> :t emit fromStdin
+-- emit fromStdin :: IO (Maybe Text)
+--
+fromStdin :: Emitter IO Text
+fromStdin = Emitter $ Just <$> NumHask.Prelude.getLine
+
+-- | commit to stdout
+--
+-- >>> commit toStdout ("I'm committed!" :: Text)
+-- I'm committed!
+-- True
+--
+toStdout :: Committer IO Text
+toStdout = Committer $ \a -> putStrLn a *> pure True
 
 -- | a single stdin committer action
 cStdin_ :: Committer (STM IO) Text -> IO ()

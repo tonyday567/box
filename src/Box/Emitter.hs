@@ -20,6 +20,9 @@ module Box.Emitter
     postaddE,
     toListE,
     unlistE,
+    addM,
+    fromListES,
+    fromListE',
   )
 where
 
@@ -150,6 +153,19 @@ postaddE f e = Emitter $ do
   f e
   pure r
 
+-- | add a post-emit monadic action
+addM :: (Monad m) =>
+    (a -> m ())
+    -> Emitter m a
+    -> Emitter m a
+addM f e = Emitter $ do
+  r <- emit e
+  case r of
+    Nothing -> pure Nothing
+    Just r' -> do
+      f r'
+      pure (Just r')
+
 -- | turn a list into an emitter
 toListE :: (MonadConc m) => Emitter m a -> m [a]
 toListE e = go [] e
@@ -159,6 +175,18 @@ toListE e = go [] e
       case x of
         Nothing -> pure (reverse xs)
         Just x' -> go (x' : xs) e'
+
+fromListES :: (Monad m) => Emitter (StateT [a] m) a
+fromListES = Emitter $ do
+  xs' <- get
+  case xs' of
+    [] -> pure Nothing
+    (x:xs'') -> do
+      put xs''
+      pure $ Just x
+
+fromListE' :: (Monad m) => [a] -> (Emitter (StateT [a] m) a -> StateT [a] m r) -> m [a]
+fromListE' xs eaction = flip execStateT xs (eaction fromListES)
 
 -- | convert a list emitter to a Stateful element emitter
 unlistE :: (Monad m) => Emitter m [a] -> Emitter (StateT [a] m) a

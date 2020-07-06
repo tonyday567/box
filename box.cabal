@@ -52,6 +52,7 @@ library
     -Wredundant-constraints
     -funbox-strict-fields
   build-depends:
+    async >= 2.2,
     attoparsec >= 0.13,
     base >=4.7 && <5,
     comonad >= 5.0,

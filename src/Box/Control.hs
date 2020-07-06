@@ -44,6 +44,7 @@ import NumHask.Prelude hiding (STM, atomically)
 import qualified Streaming.Prelude as S
 import System.IO (hFlush, hIsEOF)
 import System.Process.Typed
+import Control.Concurrent.Async (uninterruptibleCancel)
 
 -- | request ADT
 data ControlRequest
@@ -139,7 +140,7 @@ controlBox (ControlConfig restarts' autostart autorestart debug') app (Box c e) 
     cancelThread r = do
       info "cancelThread"
       (CBS a n) <- readIORef r
-      maybe (info "no thread found" >> pure ()) (\x -> cancel x >> info "thread cancelled") a
+      maybe (info "no thread found" >> pure ()) (\x -> uninterruptibleCancel x >> info "thread cancelled") a
       writeIORef r (CBS Nothing n)
     shutCheck s = do
       info "shutCheck"

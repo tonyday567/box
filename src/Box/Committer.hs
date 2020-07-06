@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -16,6 +17,8 @@ module Box.Committer
     handles,
     addC,
     postaddC,
+    stateListC,
+    toListC',
   )
 where
 
@@ -117,4 +120,13 @@ postaddC f c = Committer $ \a -> do
   r <- commit c a
   f c
   pure r
+
+stateListC :: (Monad m) => Committer (StateT [a] m) a
+stateListC = Committer $ \a -> do
+  modify (a:)
+  pure True
+
+toListC' :: (Monad m) => (Committer (StateT [a] m) a -> StateT [a] m a) -> m [a]
+toListC' cio = execStateT (cio stateListC) []
+
 

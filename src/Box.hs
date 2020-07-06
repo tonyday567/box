@@ -45,6 +45,7 @@ import Box.Transducer
 -- $setup
 -- >>> :set -XOverloadedStrings
 -- >>> :set -XGADTs
+-- >>> :set -XNoImplicitPrelude
 -- >>> import Data.Functor.Contravariant
 -- >>> import Box
 -- >>> import qualified Streaming.Prelude as S
