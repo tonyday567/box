@@ -30,9 +30,7 @@ Note how you can get confused with these metaphors.  The wire going into the box
 
 The key to understanding this library is to resist having to choose a single frame of reference and, instead, focus on the types.
 
-A `Box m c e` unifies the functorial wrapper `m` of the emitter and committer, which is what really makes it a functional box. `m` can be IO but is also often Software Transactional Memory (STM) which is the sanest environment for concurrent programming in all of the codingshpere. Boxes can often be hooked together at this level for useful efficiencies.
-
-Boxes have a monoidal instance.  They can be mappended together to form a new box and complexity stays constant.
+A `Box m c e` unifies the functorial wrapper `m` of the emitter and committer, which is what really makes it a functional box. Boxes can often be hooked together at this level for useful efficiencies.
 
 A Box is also a [profunctor](https://bartoszmilewski.com/2019/03/27/promonads-arrows-and-einstein-notation-for-profunctors/) and, to quote Bartos, a profunctor can be used to glue together two categories. A Box.Transducer, a stateful stream converter with a Category instance, can be used to connect up a box to create a sound compositional building block for arbitrarily complex problems.
 

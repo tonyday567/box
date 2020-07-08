@@ -1,10 +1,4 @@
 /.stack-work/
 TAGS
-/.DS_Store
-/src/.DS_Store
-/src/Etc/.DS_Store
-/.projectile
+**/.DS_Store
 /dist-newstyle
-/.ghc.environment.x86_64-darwin-8.6.5
-/app/.DS_Store
-/stack.yaml.lock

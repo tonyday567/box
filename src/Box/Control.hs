@@ -75,11 +75,10 @@ data ControlResponse
   deriving (Show, Read, Eq, Generic)
 
 -- | A 'Box' that only communicates via 'ControlRequest' and 'ControlResponse'
-type ControlBox_ m = (MonadConc m) => Cont m (Box (STM m) ControlResponse ControlRequest)
+type ControlBox_ m = (MonadConc m) => Box m ControlResponse ControlRequest
 
 -- | A 'Box' that communicates via 'ControlRequest' and 'ControlResponse' or an underlying typed-channel
-type ControlBox a b m = (MonadConc m) => Cont m (Box (STM m) (Either ControlResponse a) (Either ControlRequest b))
-
+type ControlBox a b m = (MonadConc m) => Box m (Either ControlResponse a) (Either ControlRequest b)
 -- |
 data ControlConfig
   = ControlConfig
@@ -101,21 +100,16 @@ defaultControlConfig = ControlConfig 1 False Nothing False
 -- | a command-line control box.
 consoleControlBox :: ControlBox Text Text IO
 consoleControlBox =
-  Box
-    <$> ( contramap (pack . show)
-            <$> (cStdout 1000 :: Cont IO (Committer (STM IO) Text))
-        )
-    <*> ( emap (pure . either (const Nothing) Just)
-            <$> ( eParse (parseControlRequest A.takeText)
-                    <$> eStdin 1000
-                )
-        )
+  Box (contramap show toStdout) (emap (pure . either (const Nothing) Just) .
+                eParse (parseControlRequest A.takeText) $
+                fromStdin
+               )
 
 -- | a command-line control box.
 consoleControlBox_ :: ControlBox_ IO
 consoleControlBox_ =
   bmap (pure . Just . Left) (pure . either Just (const Nothing))
-    <$> consoleControlBox
+    consoleControlBox
 
 data ControlBoxState a = CBS {actionThread :: Maybe (Async ()), restartsLeft :: Int}
 
@@ -123,7 +117,7 @@ data ControlBoxState a = CBS {actionThread :: Maybe (Async ()), restartsLeft :: 
 controlBox ::
   ControlConfig ->
   IO a ->
-  Box (STM IO) ControlResponse ControlRequest ->
+  Box IO ControlResponse ControlRequest ->
   IO ()
 controlBox (ControlConfig restarts' autostart autorestart debug') app (Box c e) = do
   info "controlBox"
@@ -149,12 +143,8 @@ controlBox (ControlConfig restarts' autostart autorestart debug') app (Box c e) 
     status r = do
       info "status"
       s <- C.readIORef r
-      C.atomically
-        ( void $
-            commit
-              c
-              (Status (bool Off On (isJust (actionThread s)), restartsLeft s))
-        )
+      void $
+        commit c (Status (bool Off On (isJust (actionThread s)), restartsLeft s))
     loopApp r s app' = do
       info "loopApp"
       _ <- app'
@@ -185,10 +175,10 @@ controlBox (ControlConfig restarts' autostart autorestart debug') app (Box c e) 
       info "stop"
       cancelThread r
       checkRestarts r s
-    info t = bool (pure ()) (void $ commit (liftC c) $ Info t) debug'
+    info t = bool (pure ()) (void $ commit c $ Info t) debug'
     shutdown = do
       info "shutDown"
-      void $ commit (liftC c) ShuttingDown
+      void $ commit c ShuttingDown
     checkRestarts r s = do
       info "check restarts"
       (CBS _ n) <- C.readIORef r
@@ -202,7 +192,7 @@ controlBox (ControlConfig restarts' autostart autorestart debug') app (Box c e) 
     go r s = do
       info "go"
       status r
-      msg <- C.atomically $ emit e
+      msg <- emit e
       case msg of
         Nothing -> go r s
         Just msg' ->
@@ -225,7 +215,7 @@ data CBP = CBP {listenThread :: Maybe (Async ()), process :: Maybe (Process Hand
 controlBoxProcess ::
   ControlConfig ->
   ProcessConfig Handle Handle () ->
-  Box (STM IO) (Either ControlResponse Text) (Either ControlRequest Text) ->
+  Box IO (Either ControlResponse Text) (Either ControlRequest Text) ->
   IO ()
 controlBoxProcess (ControlConfig restarts' autostart _ debug') pc (Box c e) = do
   info "controlBoxProcess"
@@ -252,12 +242,10 @@ controlBoxProcess (ControlConfig restarts' autostart _ debug') pc (Box c e) = do
     status r = do
       info "status"
       a <- C.readIORef r
-      C.atomically
-        ( void $
+      void $
             commit
               c
               (Left $ Status (bool Off On (isJust (process a)), restarts a))
-        )
     loopApp r _ = do
       info "loopApp"
       p' <- startProcess pc
@@ -276,7 +264,7 @@ controlBoxProcess (ControlConfig restarts' autostart _ debug') pc (Box c e) = do
       info "waiting for process output"
       t <- hGetLine o
       info ("received: " <> t)
-      C.atomically $ void $ commit (contramap Right c) t
+      void $ commit (contramap Right c) t
     dec r = do
       info "dec"
       a <- readIORef r
@@ -291,10 +279,10 @@ controlBoxProcess (ControlConfig restarts' autostart _ debug') pc (Box c e) = do
       info "stop"
       cancelThread r
       checkRestarts r s
-    info t = bool (pure ()) (void $ commit (liftC c) $ Left (Info t)) debug'
+    info t = bool (pure ()) (void $ commit c $ Left (Info t)) debug'
     shutdown = do
       info "shutDown"
-      void $ commit (liftC c) (Left ShuttingDown)
+      void $ commit c (Left ShuttingDown)
     checkRestarts r s = do
       info "check restarts"
       n <- restarts <$> C.readIORef r
@@ -315,7 +303,7 @@ controlBoxProcess (ControlConfig restarts' autostart _ debug') pc (Box c e) = do
     go r s = do
       info "go"
       status r
-      msg <- C.atomically $ emit e
+      msg <- emit e
       case msg of
         Nothing -> go r s
         Just msg' ->
@@ -333,14 +321,14 @@ controlBoxProcess (ControlConfig restarts' autostart _ debug') pc (Box c e) = do
             Right t -> writeIn r t >> go r s
 
 controlConsole ::
-  Cont IO (Box (STM IO) (Either ControlResponse Text) (Either ControlRequest Text))
+  Cont IO (Box IO (Either ControlResponse Text) (Either ControlRequest Text))
 controlConsole =
   Box
     <$> ( contramap (either (("Response: " <>) . show) id)
-            <$> (cStdout 1000 :: Cont IO (Committer (STM IO) Text))
+            <$> pure toStdout
         )
     <*> ( fmap (either (Right . ("parse error: " <>)) id)
-            . eParse (parseControlRequest A.takeText) <$> eStdin 1000
+            . eParse (parseControlRequest A.takeText) <$> pure fromStdin
         )
 
 -- | action for testing
@@ -350,14 +338,14 @@ beep m x s = when (x <= m) (sleep s >> putStrLn ("beep " <> show x :: Text) >> b
 -- | A box with a self-destruct timer.
 timeOut :: Double -> ControlBox m a b
 timeOut t =
-  Box <$> mempty <*> ((lift (sleep t) >> S.yield (Left Quit)) & toEmit)
+  Box mempty (premapE (\_ -> sleep t) (Emitter $ pure . pure $ Left Quit))
 
 -- | a canned ControlRequest emitter with delays
 timedRequests ::
   (MonadConc m) =>
   [(ControlRequest, Double)] ->
-  Cont m (Emitter (STM m) ControlRequest)
-timedRequests xs = toEmit $ foldr (>>) (pure ()) $ (\(a, t) -> lift (sleep t) >> S.yield a) <$> xs
+  Cont m (Emitter m ControlRequest)
+timedRequests xs = toEmitter $ foldr (>>) (pure ()) $ (\(a, t) -> lift (sleep t) >> S.yield a) <$> xs
 
 -- | manual testing
 -- > testBoxManual (ControlConfig 1 True (Just 0.5) False) 2.3 (beep 3 1 0.5)
@@ -368,11 +356,10 @@ timedRequests xs = toEmit $ foldr (>>) (pure ()) $ (\(a, t) -> lift (sleep t) >>
 -- Left ShutDown
 testBoxManual :: ControlConfig -> Double -> IO () -> IO ()
 testBoxManual cfg t effect =
-  with
+  controlBox cfg effect
     ( bmap (pure . Just . Left) (pure . either Just (const Nothing))
-        <$> consoleControlBox <> timeOut t
+        (consoleControlBox <> timeOut t)
     )
-    (controlBox cfg effect)
 
 -- | auto testing
 -- FIXME: Doesn't work with doctest
@@ -397,14 +384,13 @@ testBoxManual cfg t effect =
 -- Left (Status (On,-1))
 testBoxAuto :: ControlConfig -> Double -> [(ControlRequest, Double)] -> IO () -> IO ()
 testBoxAuto cfg t xs effect =
-  with
-    ( bmap (pure . Just . Left) (pure . either Just (const Nothing))
-        <$> ( consoleControlBox
-                <> timeOut t
+  controlBox cfg effect <$.>
+    ( bmap (pure . Just . Left) (pure . either Just (const Nothing)) <$>
+        ( pure consoleControlBox
+                <> pure (timeOut t)
                 <> (Box <$> mempty <*> (fmap Left <$> timedRequests xs))
             )
     )
-    (controlBox cfg effect)
 
 cannedCat :: ProcessConfig Handle Handle ()
 cannedCat =

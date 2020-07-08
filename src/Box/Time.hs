@@ -22,8 +22,8 @@ module Box.Time
   )
 where
 
-import Box.Emitter
 import Box.Cont
+import Box.Emitter
 import Control.Monad.Conc.Class as C
 import Data.Time
 import NumHask.Prelude hiding (STM, atomically)
@@ -109,13 +109,14 @@ emitWhen ::
   Emitter IO a
 emitWhen e =
   emap
-  (\(Stamped u a) -> do
-      sleepUntil u
-      pure $ Just a) e
+    ( \(Stamped u a) -> do
+        sleepUntil u
+        pure $ Just a
+    )
+    e
 
 -- | reset the emitter stamps to by in sync with the current time and adjust the speed
 -- >>> let e1 = fromListE (zipWith (\x a -> Stamped (addUTCTime (fromDouble x) t) a) [0..5] [0..5])
---
 playback :: Double -> Emitter IO (Stamped a) -> IO (Emitter IO (Stamped a))
 playback speed e = do
   r <- emit e
@@ -132,4 +133,3 @@ simulate :: Double -> Emitter IO (Stamped a) -> Cont IO (Emitter IO a)
 simulate speed e = Cont $ \eaction -> do
   e' <- playback speed e
   eaction (emitWhen e')
-

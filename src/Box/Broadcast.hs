@@ -22,41 +22,41 @@ import NumHask.Prelude hiding (STM, atomically)
 -- | a broadcaster
 newtype Broadcaster m a
   = Broadcaster
-      { unBroadcast :: TVar m (Committer m a)
+      { unBroadcast :: TVar (STM m) (Committer m a)
       }
 
 -- | create a (broadcaster, committer)
-broadcast :: (MonadSTM stm) => stm (Broadcaster stm a, Committer stm a)
+broadcast :: (MonadConc m) => m (Broadcaster m a, Committer m a)
 broadcast = do
-  ref <- newTVar mempty
+  ref <- atomically $ newTVar mempty
   let com = Committer $ \a -> do
-        c <- readTVar ref
+        c <- atomically $ readTVar ref
         commit c a
   return (Broadcaster ref, com)
 
 -- | subscribe to a broadcaster
-subscribe :: (MonadConc m) => Broadcaster (STM m) a -> Cont m (Emitter (STM m) a)
-subscribe (Broadcaster tvar) = Cont $ \e -> queueE' cio e
+subscribe :: (MonadConc m) => Broadcaster m a -> Cont m (Emitter m a)
+subscribe (Broadcaster tvar) = Cont $ \e -> queueE cio e
   where
     cio c = atomically $ modifyTVar' tvar (mappend c)
 
 -- | a funneler
 newtype Funneler m a
   = Funneler
-      { unFunnel :: TVar m (Emitter m a)
+      { unFunnel :: TVar (STM m) (Emitter m a)
       }
 
 -- | create a (funneler, emitter)
-funnel :: (MonadSTM stm) => stm (Funneler stm a, Emitter stm a)
+funnel :: (Alternative m, MonadConc m) => m (Funneler m a, Emitter m a)
 funnel = do
-  ref <- newTVar mempty
+  ref <- atomically $ newTVar mempty
   let em =
         Emitter $ do
-          e <- readTVar ref
+          e <- atomically $ readTVar ref
           emit e
   pure (Funneler ref, em)
 
 -- | widen to a funneler
-widen :: (MonadConc m) => Funneler (STM m) a -> Cont m (Committer (STM m) a)
+widen :: (Alternative m, MonadConc m) => Funneler m a -> Cont m (Committer m a)
 widen (Funneler tvar) =
-  Cont $ \c -> queueC' c $ \e -> atomically $ modifyTVar' tvar (mappend e)
+  Cont $ \c -> queueC c $ \e -> atomically $ modifyTVar' tvar (mappend e)

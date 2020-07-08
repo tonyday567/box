@@ -11,11 +11,13 @@ module Box.Updater
   )
 where
 
-import Box
+import Box.Committer
+import Box.Cont
+import Box.Emitter
+import Box.Queue
 import Control.Foldl (Fold (..), FoldM (..))
 import qualified Control.Foldl as Foldl
 import Control.Monad.Conc.Class as C
-import qualified GHC.Conc
 import NumHask.Prelude hiding (STM, atomically)
 
 -- | An updater of a value a, where the updating process consists of an IO fold over an emitter
@@ -23,7 +25,7 @@ data Updater a
   = forall e.
     Updater
       (FoldM IO e a)
-      (Cont IO (Emitter GHC.Conc.STM e))
+      (Cont IO (Emitter IO e))
 
 instance Functor Updater where
   fmap f (Updater fold' e) = Updater (fmap f fold') e
@@ -59,7 +61,7 @@ instance Applicative Updater where
       eT = fmap (fmap Left) eL <> fmap (fmap Right) eR
 
 -- | Create an 'Updater' value using a pure 'Fold'
-updater :: Fold e a -> Cont IO (Emitter GHC.Conc.STM e) -> Updater a
+updater :: Fold e a -> Cont IO (Emitter IO e) -> Updater a
 updater fold' = Updater (Foldl.generalize fold')
 
 -- | run an action on each update
@@ -82,23 +84,23 @@ listen handler (Updater (FoldM step begin done) mController) =
       return x'
 
 -- | Convert an 'Updater' to an Emitter continuation.
-updates :: Updater a -> Cont IO (Emitter GHC.Conc.STM a)
-updates (Updater (FoldM step begin done) e) = Cont $ \e' -> queueE' cio e'
+updates :: Updater a -> Cont IO (Emitter IO a)
+updates (Updater (FoldM step begin done) e) = Cont $ \e' -> queueE cio e'
   where
     ioref c = do
       x <- begin
       a <- done x
-      _ <- atomically $ commit c a
+      _ <- commit c a
       C.newIORef x
     cio c =
       with e $ \e' -> do
         ioref' <- ioref c
         x <- C.readIORef ioref'
-        e'' <- atomically $ emit e'
+        e'' <- emit e'
         case e'' of
           Nothing -> pure ()
           Just e''' -> do
             x' <- step x e'''
             a <- done x'
-            _ <- atomically $ commit c a
+            _ <- commit c a
             C.writeIORef ioref' x'

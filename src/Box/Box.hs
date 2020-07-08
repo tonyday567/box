@@ -10,16 +10,18 @@
 -- | A box is something that commits and emits
 module Box.Box
   ( Box (..),
-    liftB,
     bmap,
+    glue,
+    fuse,
+    dotb,
   )
 where
 
 import Box.Committer
 import Box.Emitter
-import Control.Lens hiding ((.>), (:>), (<|), (|>))
-import Control.Monad.Conc.Class
-import NumHask.Prelude hiding (STM)
+import Data.Functor.Contravariant
+import Data.Profunctor
+import NumHask.Prelude
 
 -- | A Box is a product of a Committer m and an Emitter. Think of a box with an incoming wire and an outgoing wire. Now notice that the abstraction is reversable: are you looking at two wires from "inside a box"; a blind erlang grunt communicating with the outside world via the two thin wires, or are you looking from "outside the box"; interacting with a black box object. Either way, it's a box.
 -- And either way, the committer is contravariant and the emitter covariant so it forms a profunctor.
@@ -41,13 +43,33 @@ instance (Alternative m, Monad m) => Monoid (Box m c e) where
   mempty = Box mempty mempty
   mappend = (<>)
 
--- | lift a box from STM
-liftB :: (MonadConc m) => Box (STM m) a b -> Box m a b
-liftB (Box c e) = Box (liftC c) (liftE e)
-
 -- | a profunctor dimapMaybe
 bmap :: (Monad m) => (a' -> m (Maybe a)) -> (b -> m (Maybe b')) -> Box m a b -> Box m a' b'
 bmap fc fe (Box c e) = Box (cmap fc c) (emap fe e)
 
+{-
+instance Category (Box Identity) where
+  id = Box ??? ???
+  (.) (Box c e) (Box c' e') = runIdentity $ glue c e' >> pure (Box c' e)
+-}
 
+-- | composition of monadic boxes
+dotb :: (Monad m) => Box m a b -> Box m b c -> m (Box m a c)
+dotb (Box c e) (Box c' e') = glue c' e *> (pure $ Box c e')
 
+-- | Connect an emitter directly to a committer of the same type.
+--
+-- The monadic action returns when the committer finishes.
+glue :: (Monad m) => Committer m a -> Emitter m a -> m ()
+glue c e = go
+  where
+    go = do
+      a <- emit e
+      c' <- maybe (pure False) (commit c) a
+      when c' go
+
+-- | fuse a box
+--
+-- > fuse (pure . pure) (Box c e) == glue c e == etc () (Transducer id)
+fuse :: (Monad m) => (a -> m (Maybe b)) -> Box m b a -> m ()
+fuse f (Box c e) = glue c (emap f e)

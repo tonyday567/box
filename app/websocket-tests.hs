@@ -111,13 +111,13 @@ clientBox ::
   ConfigSocket ->
   IO ()
 clientBox cfg =
-  Box.with (liftB <$> (Box <$> showStdout <*> readStdin)) (client cfg . clientApp)
+  (client cfg . clientApp) (Box showStdout readStdin)
 
 clientBox' ::
   ConfigSocket ->
   IO ()
 clientBox' cfg =
-  Box.with ((Box <$> (liftC <$> showStdout) <*> (liftE <$> eStdin'))) (client cfg . clientApp')
+  (client cfg . clientApp') (Box showStdout readStdin)
 
 -- | a receiver that immediately sends a response
 responder ::
@@ -171,15 +171,14 @@ serverBox ::
   ConfigSocket ->
   IO ()
 serverBox cfg =
-  Box.with
-    (Box <$> showStdout <*> readStdin)
     (controlBox (ControlConfig 3 True Nothing True) (server cfg serverApp))
+    (Box showStdout readStdin)
 
 server' :: IO ()
 server' = do
   withAsync
     (server defaultConfigSocket serverApp)
-    (\_ -> Box.with (liftE <$> eStdin 5) cancelQ)
+    (\_ -> cancelQ readStdin)
 
 testServer :: IO ()
 testServer = serverBox defaultConfigSocket

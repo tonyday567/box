@@ -31,9 +31,7 @@ library
     Box.Control
     Box.Emitter
     Box.IO
-    Box.Plugs
     Box.Queue
-    Box.Stream
     Box.Time
     Box.Transducer
     Box.Updater
@@ -63,6 +61,7 @@ library
     lens >= 4.19,
     mmorph >= 1.1,
     numhask-prelude >= 0.6,
+    profunctors >= 5.5,
     streaming >= 0.2,
     text >= 1.2,
     time >= 1.9,
