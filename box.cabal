@@ -28,7 +28,6 @@ library
     Box.Committer
     Box.Connectors
     Box.Cont
-    Box.Control
     Box.Emitter
     Box.IO
     Box.Queue

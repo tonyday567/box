@@ -21,7 +21,6 @@ The client prints received messages to stdout.
 module Main where
 
 import Box
-import Box.Control
 import Control.Lens
 import Data.Generics.Labels ()
 import qualified Network.WebSockets as WS
@@ -50,9 +49,42 @@ con p = Cont $
       (WS.acceptRequest p)
       (\conn -> WS.sendClose conn ("Bye from con!" :: Text))
 
+clientApp ::
+  Box IO (Either Text Text) Text ->
+  WS.ClientApp ()
+clientApp (Box c e) conn =
+  void $
+    race
+      (receiver c conn)
+      (sender e conn)
+
+serverApp ::
+  WS.PendingConnection ->
+  IO ()
+serverApp p = Box.with (con p) (responder (\x -> pure ("echo:" <> x)))
+
+server' :: IO ()
+server' = do
+  withAsync
+    (server defaultConfigSocket serverApp)
+    (\_ -> cancelQ readStdin)
+
+client' :: IO ()
+client' = (client defaultConfigSocket . clientApp) (Box showStdout readStdin)
+
+main :: IO ()
+main = server'
+
+testRun :: IO ()
+testRun = do
+  withAsync
+    (server defaultConfigSocket serverApp)
+    (\a -> sleep 10 >> cancel a)
+
 -- | default websocket receiver
+-- Lefts are info/debug
 receiver ::
-  Committer IO (Either ControlResponse Text) ->
+  Committer IO (Either Text Text) ->
   WS.Connection ->
   IO Bool
 receiver c conn = go
@@ -64,8 +96,7 @@ receiver c conn = go
           commit
             c
             ( Left
-                ( Info $
-                    "receiver: received: close: " <> show w <> " " <> show b
+                ( "receiver: received: close: " <> show w <> " " <> show b
                 )
             )
         WS.ControlMessage _ -> go
@@ -88,67 +119,12 @@ sender e conn = forever $ do
       putStrLn $ "sender: sending: " <> (show msg' :: Text)
       WS.sendTextData conn msg'
 
-clientApp ::
-  Box IO (Either ControlResponse Text) Text ->
-  WS.ClientApp ()
-clientApp (Box c e) conn =
-  void $
-    concurrently
-      (receiver c conn)
-      (sender e conn)
-
-clientApp' ::
-  Box IO (Either ControlResponse Text) Text ->
-  WS.ClientApp ()
-clientApp' (Box c e) conn =
-  void $
-    race
-      (receiver c conn)
-      (sender e conn)
-
--- | single uncontrolled client
-clientBox ::
-  ConfigSocket ->
-  IO ()
-clientBox cfg =
-  (client cfg . clientApp) (Box showStdout readStdin)
-
-clientBox' ::
-  ConfigSocket ->
-  IO ()
-clientBox' cfg =
-  (client cfg . clientApp') (Box showStdout readStdin)
-
--- | a receiver that immediately sends a response
-responder ::
-  (Text -> Either ControlResponse Text) ->
-  WS.Connection ->
-  IO ()
-responder f conn = go
-  where
-    go = do
-      msg <- WS.receive conn
-      case msg of
-        WS.ControlMessage (WS.Close _ _) -> do
-          WS.sendClose conn ("returning close signal" :: Text)
-        WS.ControlMessage _ -> go
-        WS.DataMessage _ _ _ msg' ->
-          case (f $ WS.fromDataMessage msg') of
-            Right t -> do
-              WS.sendTextData conn t
-              putStrLn $ ("responder: received: " <> WS.fromDataMessage msg' :: Text)
-              go
-            Left ShuttingDown -> do
-              WS.sendClose conn ("received ShuttingDown signal" :: Text)
-              putStrLn $ ("responder: closing" :: Text)
-            Left _ -> go
-
 -- | a receiver that responds based on received Text
-responder' ::
+responder ::
   (Text -> IO Text) ->
   WS.Connection ->
   IO ()
-responder' f conn = go
+responder f conn = go
   where
     go = do
       msg <- WS.receive conn
@@ -161,32 +137,6 @@ responder' f conn = go
           WS.sendTextData conn r
           go
 
-serverApp ::
-  WS.PendingConnection ->
-  IO ()
-serverApp p = Box.with (con p) (responder' (\x -> pure ("echo:" <> x)))
-
--- | controlled server
-serverBox ::
-  ConfigSocket ->
-  IO ()
-serverBox cfg =
-    (controlBox (ControlConfig 3 True Nothing True) (server cfg serverApp))
-    (Box showStdout readStdin)
-
-server' :: IO ()
-server' = do
-  withAsync
-    (server defaultConfigSocket serverApp)
-    (\_ -> cancelQ readStdin)
-
-testServer :: IO ()
-testServer = serverBox defaultConfigSocket
-
-testClient :: IO ()
-testClient = clientBox' defaultConfigSocket
-
-
 cancelQ :: Emitter IO Text -> IO ()
 cancelQ e = do
   e' <- emit e
@@ -195,13 +145,3 @@ cancelQ e = do
     _ -> do
       putStrLn ("nothing happens" :: Text)
       cancelQ e
-
-main :: IO ()
-main = server'
-
-testRun :: IO ()
-testRun = do
-  withAsync
-    (server defaultConfigSocket serverApp)
-    (\a -> sleep 10 >> cancel a)
-
