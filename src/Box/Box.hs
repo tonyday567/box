@@ -11,6 +11,7 @@
 module Box.Box
   ( Box (..),
     bmap,
+    hoistb,
     glue,
     fuse,
     dotb,
@@ -32,6 +33,10 @@ data Box m c e
       { committer :: Committer m c,
         emitter :: Emitter m e
       }
+
+-- | Wrong signature for the MFunctor class
+hoistb :: Monad m => (forall a. m a -> n a) -> Box m c e -> Box n c e
+hoistb nat (Box c e) = Box (hoist nat c) (hoist nat e)
 
 instance (Functor m) => Profunctor (Box m) where
   dimap f g (Box c e) = Box (contramap f c) (fmap g e)

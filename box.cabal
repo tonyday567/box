@@ -110,7 +110,9 @@ executable websocket-tests
   build-depends:
     base >=4.7 && <5,
     box,
+    concurrency >= 1.11,
     dejafu >= 2.3,
+    exceptions >= 0.10,
     generic-lens >= 2.0,
     lens >= 4.19,
     managed >= 1.0,
