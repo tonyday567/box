@@ -25,7 +25,7 @@ import Test.DejaFu hiding (get)
 import Test.DejaFu.Types
 import System.Random
 import Control.Lens
-
+import qualified Streaming.Prelude as S
 
 tERef :: (MonadConc m) => Emitter m a -> m [a]
 tERef e = do
@@ -51,11 +51,15 @@ tToList_ :: (MonadConc m) => Int -> m [Int]
 tToList_ n =
   toList_ <$.> fromListE [1 .. n]
 
+-- failing
 tFromList_ :: (MonadConc m) => Int -> m [Int]
 tFromList_ n = do
   (c,res) <- cRef
   fromList_ [1 .. n] c
   res
+
+tFromList_' :: (MonadConc m) => Int -> m [Int]
+tFromList_' n = reverse <$> (flip execStateT [] $ fromList_ [1..n] stateC)
 
 tPureState :: Int -> [Int]
 tPureState n =
@@ -86,4 +90,17 @@ t c = dejafuWay (randomly (mkStdGen 42) 1000) defaultMemType "" alwaysSame c
 main :: IO ()
 main = do
   let n = 4
-  sequence_ $ autocheck <$> [tToListE n, tFromListE n]
+  sequence_ $ autocheck <$>
+    [ tToListE n,
+      tFromListE n,
+      tToList_ n,
+      tFromList_' n,
+      pure (tPureState n),
+      tPureBoxF (etc () (Transducer id)) n,
+      tPureBoxF (fuse (pure . pure)) n,
+      tPureBoxF (\(Box c e) -> glue c e) n,
+      (\(a,b) -> a <> b) <$> (tForkEmit <$.> (fromListE [1..n])),
+      (\(a,b) -> a <> b) <$> (tForkEmit <$.> (toEmitter (S.take 4 $ S.each [1..])))
+      ]
+
+

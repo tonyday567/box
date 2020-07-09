@@ -104,6 +104,7 @@ toBox q = do
       seal
     )
 
+-- | turn a queue into a box (and a seal), and lift from stm to the underlying monad.
 toBoxM ::
   (MonadConc m) =>
   Queue a ->

@@ -12,8 +12,7 @@
 module Box.Committer
   ( Committer (..),
     drain,
-    cmap,
-    handles,
+    mapC,
     premapC,
     postmapC,
     stateC,
@@ -70,32 +69,14 @@ drain :: (Applicative m) => Committer m a
 drain = Committer (\_ -> pure True)
 
 -- | This is a contramapMaybe, if such a thing existed, as the contravariant version of a mapMaybe.  See [witherable](https://hackage.haskell.org/package/witherable)
-cmap :: (Monad m) => (b -> m (Maybe a)) -> Committer m a -> Committer m b
-cmap f c = Committer go
+mapC :: (Monad m) => (b -> m (Maybe a)) -> Committer m a -> Committer m b
+mapC f c = Committer go
   where
     go b = do
       fb <- f b
       case fb of
         Nothing -> pure True
         Just fb' -> commit c fb'
-
--- | prism handler
-handles ::
-  (Monad m) =>
-  -- |
-  ((b -> Constant (First b) b) -> (a -> Constant (First b) a)) ->
-  -- |
-  Committer m b ->
-  Committer m a
-handles k (Committer commit_) =
-  Committer
-    ( \a ->
-        case match a of
-          Nothing -> return False
-          Just b -> commit_ b
-    )
-  where
-    match = getFirst . getConstant . k (Constant . First . Just)
 
 -- | adds a monadic action to the committer
 premapC ::

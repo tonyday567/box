@@ -1,8 +1,10 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wall #-}
+{-# OPTIONS_GHC -Wno-unused-do-bind #-}
 
 {-
 
@@ -90,6 +92,11 @@ clientState :: (MonadIO m, MonadConc m) => [Text] -> IORef m [Either Text Text] 
 clientState xs ref conn = do
   (res, res') <- flip execStateT ([],xs) $ clientApp (Box (hoist (zoom _1) stateC) (hoist (zoom _2) stateE)) conn
   putStrLn (show res' :: Text)
+  C.writeIORef ref res
+
+clientState' :: (MonadIO m, MonadConc m) => [Text] -> IORef m [Either Text Text] -> WS.Connection -> m ()
+clientState' xs ref conn = do
+  res <- fromToList_ xs (\b -> clientApp b conn)
   C.writeIORef ref res
 
 main :: IO ()

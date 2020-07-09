@@ -13,6 +13,7 @@ module Box.Box
     bmap,
     hoistb,
     glue,
+    glueb,
     fuse,
     dotb,
   )
@@ -50,7 +51,7 @@ instance (Alternative m, Monad m) => Monoid (Box m c e) where
 
 -- | a profunctor dimapMaybe
 bmap :: (Monad m) => (a' -> m (Maybe a)) -> (b -> m (Maybe b')) -> Box m a b -> Box m a' b'
-bmap fc fe (Box c e) = Box (cmap fc c) (emap fe e)
+bmap fc fe (Box c e) = Box (mapC fc c) (mapE fe e)
 
 {-
 instance Category (Box Identity) where
@@ -73,8 +74,12 @@ glue c e = go
       c' <- maybe (pure False) (commit c) a
       when c' go
 
+-- | Short-circuit a homophonuos box.
+glueb :: (Monad m) => Box m a a -> m ()
+glueb (Box c e) = glue c e
+
 -- | fuse a box
 --
--- > fuse (pure . pure) (Box c e) == glue c e == etc () (Transducer id)
+-- > fuse (pure . pure) == glueb == etc () (Transducer id)
 fuse :: (Monad m) => (a -> m (Maybe b)) -> Box m b a -> m ()
-fuse f (Box c e) = glue c (emap f e)
+fuse f (Box c e) = glue c (mapE f e)

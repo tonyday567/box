@@ -11,18 +11,17 @@ module Box.Connectors
   ( fromListE,
     fromList_,
     toList_,
+    fromToList_,
     emitQ,
     commitQ,
     sink,
     source,
     forkEmit,
     feedback,
-    feedbackE,
     queueCommitter,
     queueEmitter,
-    emerge,
-    splitCommit,
-    contCommit,
+    concurrentE,
+    concurrentC,
   )
 where
 
@@ -32,10 +31,9 @@ import Box.Cont
 import Box.Emitter
 import Box.Queue
 import Control.Concurrent.Classy.Async as C
+import Control.Lens
 import Control.Monad.Conc.Class (MonadConc)
 import NumHask.Prelude hiding (STM, atomically)
-
--- * primitives
 
 -- | Turn a list into an 'Emitter' continuation via a 'Queue'
 fromListE :: (MonadConc m) => [a] -> Cont m (Emitter m a)
@@ -50,12 +48,29 @@ eListC (e : es) c = do
     Just x' -> commit c x' *> eListC es c
 
 -- | fromList_ directly supplies to a committer action
+--
+-- FIXME: fromList_ combined with cRef is failing dejavu concurrency testing...
 fromList_ :: Monad m => [a] -> Committer m a -> m ()
 fromList_ xs c = flip evalStateT xs $ glue (hoist lift c) stateE
 
--- | toList_ directly receives from an emitter action
+-- | toList_ directly receives from an emitter
+--
+-- TODO: check isomorphism
+--
+-- > toList_ == toListE
+--
 toList_ :: (Monad m) => Emitter m a -> m [a]
-toList_ e = flip execStateT [] $ glue stateC (hoist lift e)
+toList_ e = reverse <$> (flip execStateT [] $ glue stateC (hoist lift e))
+
+-- | take a list, emit it through a box, and output the committed result.
+--
+-- The pure nature of this computation is highly useful for testing,
+-- especially where parts of the box under investigation has non-deterministic attributes.
+--
+fromToList_ :: (Monad m) => [a] -> (Box (StateT ([b],[a]) m) b a -> StateT ([b],[a]) m r) -> m [b]
+fromToList_ xs f = do
+  (res, _) <- flip execStateT ([],xs) $ f (Box (hoist (zoom _1) stateC) (hoist (zoom _2) stateE))
+  pure (reverse res)
 
 -- | hook a committer action to a queue, creating an emitter continuation
 emitQ :: (MonadConc m) => (Committer m a -> m r) -> Cont m (Emitter m a)
@@ -74,8 +89,8 @@ sink1 f e = do
     Just a' -> f a'
 
 -- | finite sink
-sink :: (MonadConc m) => (a -> m ()) -> Int -> Cont m (Committer m a)
-sink f n = commitQ $ replicateM_ n . (sink1 f)
+sink :: (MonadConc m) => Int -> (a -> m ()) -> Cont m (Committer m a)
+sink n f = commitQ $ replicateM_ n . (sink1 f)
 
 -- | singleton source
 source1 :: (Monad m) => m a -> Committer m a -> m ()
@@ -84,18 +99,16 @@ source1 a c = do
   void $ commit c a'
 
 -- | finite source
-source :: (MonadConc m) => m a -> Int -> Cont m (Emitter m a)
-source f n = emitQ $ replicateM_ n . (source1 f)
+source :: (MonadConc m) => Int -> m a -> Cont m (Emitter m a)
+source n f = emitQ $ replicateM_ n . (source1 f)
 
--- | fork branch an emitter
+-- | glues an emitter to a committer, then resupplies the emitter
 forkEmit :: (Monad m) => Emitter m a -> Committer m a -> Emitter m a
 forkEmit e c =
   Emitter $ do
     a <- emit e
     maybe (pure ()) (void <$> commit c) a
     pure a
-
--- * buffer hookups
 
 -- | fuse a committer to a buffer
 queueCommitter :: (MonadConc m) => Committer m a -> Cont m (Committer m a)
@@ -105,39 +118,42 @@ queueCommitter c = Cont $ \caction -> queueC caction (glue c)
 queueEmitter :: (MonadConc m) => Emitter m a -> Cont m (Emitter m a)
 queueEmitter e = Cont $ \eaction -> queueE (`glue` e) eaction
 
--- | merge two emitters
+-- | concurrently run two emitters
 --
--- This differs from `liftA2 (<>)` in that the monoidal (and alternative) instance of an Emitter is left-biased (The left emitter exhausts before the right one is begun). This merge is concurrent.
-emerge ::
+-- This differs from mappend in that the monoidal (and alternative) instance of an Emitter is left-biased (The left emitter exhausts before the right one is begun). This is non-deterministically concurrent.
+concurrentE ::
   (MonadConc m) =>
-  Cont m (Emitter m a, Emitter m a) ->
+  Emitter m a ->
+  Emitter m a ->
   Cont m (Emitter m a)
-emerge e =
+concurrentE e e' =
   Cont $ \eaction ->
-    with e $ \e' ->
       fst
         <$> C.concurrently
-          (queueE (`glue` (fst e')) eaction)
-          (queueE (`glue` (snd e')) eaction)
+          (queueE (`glue` e) eaction)
+          (queueE (`glue` e') eaction)
 
--- | split a committer
-splitCommit ::
+-- | run two committers concurrently
+concurrentC :: (MonadConc m) => Committer m a -> Committer m a -> Cont m (Committer m a)
+concurrentC c c' = mergeC <$> eitherC c c'
+
+eitherC ::
   (MonadConc m) =>
-  Cont m (Committer m a) ->
+  Committer m a ->
+  Committer m a ->
   Cont m (Either (Committer m a) (Committer m a))
-splitCommit c =
-  Cont $ \kk ->
-    with c $ \c' ->
-      concurrentlyLeft
-        (queueC (kk . Left) (glue c'))
-        (queueC (kk . Right) (glue c'))
+eitherC cl cr =
+  Cont $
+  \kk ->
+    fst <$> C.concurrently
+    (queueC (kk . Left) (glue cl))
+    (queueC (kk . Right) (glue cr))
 
--- | use a split committer
-contCommit :: Either (Committer m a) (Committer m b) -> (Committer m a -> Committer m b) -> Committer m b
-contCommit ec f =
+mergeC :: Either (Committer m a) (Committer m a) -> Committer m a
+mergeC ec =
   Committer $ \a ->
     case ec of
-      Left lc -> commit (f lc) a
+      Left lc -> commit lc a
       Right rc -> commit rc a
 
 -- | a box modifier that feeds commits back to the emitter
@@ -149,14 +165,5 @@ feedback ::
 feedback f box =
   Cont $ \bio ->
     with box $ \(Box c e) -> do
-      glue c (emap f e)
+      glue c (mapE f e)
       bio (Box c e)
-
--- | an emitter post-processor that cons transformed emissions back into the emitter
-feedbackE ::
-  (MonadConc m) =>
-  (a -> m (Maybe a)) ->
-  Emitter m a ->
-  Cont m (Emitter m a)
-feedbackE f e =
-  emerge ((,) <$> pure e <*> queueEmitter (emap f e))

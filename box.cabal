@@ -24,7 +24,6 @@ library
   exposed-modules:
     Box
     Box.Box
-    Box.Broadcast
     Box.Committer
     Box.Connectors
     Box.Cont
@@ -33,7 +32,6 @@ library
     Box.Queue
     Box.Time
     Box.Transducer
-    Box.Updater
   hs-source-dirs:
     src
   default-extensions:

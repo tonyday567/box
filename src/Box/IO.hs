@@ -17,13 +17,13 @@ module Box.IO
     toStdoutN,
     readStdin,
     showStdout,
-    emitLines,
-    commitLines,
+    handleE,
+    handleC,
     cRef,
     eRef,
-    fileEmitter,
-    fileCommitter,
-    appendCommitter,
+    fileE,
+    fileWriteC,
+    fileAppendC,
   )
 where
 
@@ -59,46 +59,46 @@ toStdout = Committer $ \a -> putStrLn a *> pure True
 
 -- | finite console emitter
 fromStdinN :: Int -> Cont IO (Emitter IO Text)
-fromStdinN n = source NumHask.Prelude.getLine n
+fromStdinN n = source n NumHask.Prelude.getLine
 
 -- | finite console committer
 toStdoutN :: Int -> Cont IO (Committer IO Text)
-toStdoutN n = sink putStrLn n
+toStdoutN n = sink n putStrLn
 
 -- | read from console, throwing away read errors
 readStdin :: Read a => Emitter IO a
-readStdin = emap (pure . either (const Nothing) Just) . eRead $ fromStdin
+readStdin = mapE (pure . either (const Nothing) Just) . readE $ fromStdin
 
 -- | show to stdout
 showStdout :: Show a => Committer IO a
 showStdout = contramap show toStdout
 
--- * file operations
-
+-- * handle operations
 -- | Emits lines of Text from a handle.
-emitLines :: Handle -> Emitter IO Text
-emitLines h = Emitter $ do
+handleE :: Handle -> Emitter IO Text
+handleE h = Emitter $ do
   l :: (Either IOException Text) <- try (hGetLine h)
   pure $ case l of
     Left _ -> Nothing
     Right a -> bool (Just a) Nothing (a == "")
 
 -- | Commit lines of Text to a handle.
-commitLines :: Handle -> Committer IO Text
-commitLines h = Committer $ \a -> do
+handleC :: Handle -> Committer IO Text
+handleC h = Committer $ \a -> do
   hPutStrLn h a
   pure True
 
-fileEmitter :: FilePath -> Cont IO (Emitter IO Text)
-fileEmitter fp = Cont $ \eio -> withFile fp ReadMode (eio . emitLines)
+-- | Emits lines of Text from a file.
+fileE :: FilePath -> Cont IO (Emitter IO Text)
+fileE fp = Cont $ \eio -> withFile fp ReadMode (eio . handleE)
 
-fileCommitter :: FilePath -> Cont IO (Committer IO Text)
-fileCommitter fp = Cont $ \cio -> withFile fp WriteMode (cio . commitLines)
+-- | Commits lines of Text to a file.
+fileWriteC :: FilePath -> Cont IO (Committer IO Text)
+fileWriteC fp = Cont $ \cio -> withFile fp WriteMode (cio . handleC)
 
-appendCommitter :: FilePath -> Cont IO (Committer IO Text)
-appendCommitter fp = Cont $ \cio -> withFile fp AppendMode (cio . commitLines)
-
--- * concurrent refs
+-- | Commits lines of Text, appending to a file.
+fileAppendC :: FilePath -> Cont IO (Committer IO Text)
+fileAppendC fp = Cont $ \cio -> withFile fp AppendMode (cio . handleC)
 
 -- | commit to a list IORef
 cRef :: (C.MonadConc m) => m (Committer m a, m [a])

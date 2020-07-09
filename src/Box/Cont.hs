@@ -8,10 +8,10 @@
 module Box.Cont
   ( Cont (..),
     runCont,
-    Cont_ (..),
-    runCont_,
     (<$.>),
     (<*.>),
+    Cont_ (..),
+    runCont_,
   )
 where
 
@@ -52,6 +52,7 @@ instance (Functor m, Semigroup a, Monoid a) => Monoid (Cont m a) where
 
   mappend = (<>)
 
+-- | finally run a continuation
 runCont :: Cont m (m r) -> m r
 runCont x = with x id
 
@@ -90,6 +91,7 @@ instance (Functor m, Semigroup a, Monoid a) => Monoid (Cont_ m a) where
 
   mappend = (<>)
 
+-- | finally run a Cont_
 runCont_ :: Cont_ m (m ()) -> m ()
 runCont_ x = with_ x id
 

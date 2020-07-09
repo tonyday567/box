@@ -12,12 +12,11 @@
 -- | `emit`
 module Box.Emitter
   ( Emitter (..),
-    emap,
-    keeps,
-    eRead,
-    eRead_,
-    eParse,
-    eParse_,
+    mapE,
+    readE,
+    readE_,
+    parseE,
+    parseE_,
     premapE,
     postmapE,
     postmapM,
@@ -83,8 +82,8 @@ instance (Alternative m, Monad m) => Monoid (Emitter m a) where
   mappend = (<>)
 
 -- | like a monadic mapMaybe. (See [witherable](https://hackage.haskell.org/package/witherable))
-emap :: (Monad m) => (a -> m (Maybe b)) -> Emitter m a -> Emitter m b
-emap f e = Emitter go
+mapE :: (Monad m) => (a -> m (Maybe b)) -> Emitter m a -> Emitter m b
+mapE f e = Emitter go
   where
     go = do
       a <- emit e
@@ -96,40 +95,20 @@ emap f e = Emitter go
             Nothing -> go
             Just fa' -> pure (Just fa')
 
--- | prism handler
-keeps ::
-  (Monad m) =>
-  -- |
-  ((b -> Constant (First b) b) -> (a -> Constant (First b) a)) ->
-  -- |
-  Emitter m a ->
-  Emitter m b
-keeps k (Emitter emit_) = Emitter emit_'
-  where
-    emit_' = do
-      ma <- emit_
-      case ma of
-        Nothing -> return Nothing
-        Just a ->
-          case match a of
-            Nothing -> emit_'
-            Just b -> return (Just b)
-    match = getFirst . getConstant . k (Constant . First . Just)
-
 -- | parse emitter which returns the original text on failure
-eParse :: (Functor m) => A.Parser a -> Emitter m Text -> Emitter m (Either Text a)
-eParse parser e = (\t -> either (const $ Left t) Right (A.parseOnly parser t)) <$> e
+parseE :: (Functor m) => A.Parser a -> Emitter m Text -> Emitter m (Either Text a)
+parseE parser e = (\t -> either (const $ Left t) Right (A.parseOnly parser t)) <$> e
 
 -- | no error-reporting parsing
-eParse_ :: (Monad m) => A.Parser a -> Emitter m Text -> Emitter m a
-eParse_ parser = emap (pure . (either (const Nothing) Just)) . eParse parser
+parseE_ :: (Monad m) => A.Parser a -> Emitter m Text -> Emitter m a
+parseE_ parser = mapE (pure . (either (const Nothing) Just)) . parseE parser
 
 -- | read parse emitter, returning the original string on error
-eRead ::
+readE ::
   (Functor m, Read a) =>
   Emitter m Text ->
   Emitter m (Either Text a)
-eRead = fmap $ parsed . unpack
+readE = fmap $ parsed . unpack
   where
     parsed str =
       case reads str of
@@ -137,11 +116,11 @@ eRead = fmap $ parsed . unpack
         _ -> Left (pack str)
 
 -- | no error-reporting reading
-eRead_ ::
+readE_ ::
   (Monad m, Read a) =>
   Emitter m Text ->
   Emitter m a
-eRead_ = emap (pure . (either (const Nothing) Just)) . eRead
+readE_ = mapE (pure . (either (const Nothing) Just)) . readE
 
 -- | adds a pre-emit monadic action to the emitter
 premapE ::
@@ -162,7 +141,7 @@ postmapE f e = Emitter $ do
   f e
   pure r
 
--- | add a post-emit monadic action
+-- | add a post-emit monadic action on the emitted value (if there was any)
 postmapM ::
   (Monad m) =>
   (a -> m ()) ->
@@ -202,7 +181,7 @@ stateE = Emitter $ do
 
 -- | convert a list emitter to a Stateful element emitter
 unlistE :: (Monad m) => Emitter m [a] -> Emitter (StateT [a] m) a
-unlistE es = emap unlistS (hoist lift es)
+unlistE es = mapE unlistS (hoist lift es)
   where
     unlistS xs = do
       rs <- get
