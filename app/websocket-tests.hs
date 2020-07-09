@@ -1,35 +1,32 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeOperators #-}
 {-# OPTIONS_GHC -Wall #-}
 {-# OPTIONS_GHC -Wno-unused-do-bind #-}
 
 {-
 
-FIXME:
-
-Models a websocket connection:
-
-The client socket reads (Either ControlRequest Text) from stdin.
-
-The server socket processes Left ControlRequests and echoes Right text messages back to the client.
-
-The client prints received messages to stdout.
+Models a websocket connection
 
 -}
 
 module Main where
 
 import Box
-import Control.Lens
+import Control.Lens hiding (Wrapped, Unwrapped)
 import Data.Generics.Labels ()
 import qualified Network.WebSockets as WS
 import NumHask.Prelude hiding (STM, bracket)
 import Control.Monad.Conc.Class as C
 import Control.Monad.Catch
 import qualified Control.Concurrent.Classy.Async as C
+import Options.Generic
 
 data ConfigSocket
   = ConfigSocket
@@ -69,46 +66,44 @@ serverApp ::
   WS.PendingConnection ->
   IO ()
 serverApp p =
-  Box.with (con p)
+  with (con p)
   (responder
    (\x -> bool (Right $ "echo:" <> x) (Left "quit") (x=="q"))
    mempty
   )
 
-server' :: IO ()
-server' = server defaultConfigSocket serverApp
+serverIO :: IO ()
+serverIO = server defaultConfigSocket serverApp
 
-client' :: IO ()
-client' = (client defaultConfigSocket . clientApp) <$.> (Box <$> pure showStdout <*> (fromListE ["a", "b", "q", "x"]))
+clientIO :: IO ()
+clientIO =
+  (client defaultConfigSocket . clientApp)
+  (Box (contramap show toStdout) fromStdin)
 
--- | TODO: is broken compared with client'
-client'' :: [Text] -> IO [Either Text Text]
-client'' xs = do
-  ref <- C.newIORef []
-  client defaultConfigSocket (clientState xs ref)
-  C.readIORef ref
+data SocketType = Client | Responder | TestRun deriving (Eq, Read, Show, Generic)
 
-clientState :: (MonadIO m, MonadConc m) => [Text] -> IORef m [Either Text Text] -> WS.Connection -> m ()
-clientState xs ref conn = do
-  (res, res') <- flip execStateT ([],xs) $ clientApp (Box (hoist (zoom _1) stateC) (hoist (zoom _2) stateE)) conn
-  putStrLn (show res' :: Text)
-  C.writeIORef ref res
+instance ParseField SocketType
 
-clientState' :: (MonadIO m, MonadConc m) => [Text] -> IORef m [Either Text Text] -> WS.Connection -> m ()
-clientState' xs ref conn = do
-  res <- fromToList_ xs (\b -> clientApp b conn)
-  C.writeIORef ref res
+instance ParseRecord SocketType
+
+instance ParseFields SocketType
+
+data Opts w
+  = Opts
+      { apptype :: w ::: SocketType <?> "type of websocket app"
+      }
+  deriving (Generic)
+
+instance ParseRecord (Opts Wrapped)
 
 main :: IO ()
 main = do
-  r <- q server'
-  putStrLn (show r :: Text)
-
-testRun :: IO ()
-testRun = do
-  withAsync
-    (server defaultConfigSocket serverApp)
-    (\a -> sleep 10 >> cancel a)
+  o :: Opts Unwrapped <- unwrapRecord "example websocket apps"
+  r :: Text <- case apptype o of
+    Client -> show <$> clientIO
+    Responder -> show <$> q serverIO
+    TestRun -> show <$> testRun
+  putStrLn r
 
 -- | default websocket receiver
 -- Lefts are info/debug
@@ -185,3 +180,31 @@ cancelQ e = do
     _ -> do
       putStrLn ("nothing happens" :: Text)
       cancelQ e
+
+-- | test of clientApp via a cRef committer and a canned list of Text
+tClient :: [Text] -> IO [Either Text Text]
+tClient xs = do
+  (c,r) <- cRef
+  client defaultConfigSocket
+    (\conn ->
+       (\b -> clientApp b conn) <$.>
+       (Box <$>
+        pure c <*>
+        fromListE (xs <> ["q"])))
+  r
+
+tClientIO :: [Text] -> IO ()
+tClientIO xs =
+  (client defaultConfigSocket . clientApp) <$.>
+  (Box (contramap show toStdout) <$> (fromListE (xs <> ["q"])))
+
+-- | main test run of client-server functionality
+-- the code starts a server in a thread, starts the client in the main thread, and cancels the server on completion.
+-- >>> testRun
+-- [Left "receiver: received: echo:1",Right "echo:1",Left "receiver: received: echo:2",Right "echo:2",Left "receiver: received: echo:3",Right "echo:3",Left "receiver: received: close: 1000 \"received close signal: responder closed.\""]
+testRun :: IO [Either Text Text]
+testRun = do
+  a <- async (server defaultConfigSocket serverApp)
+  r <- tClient (show <$> [1..3::Int])
+  cancel a
+  pure r
