@@ -39,11 +39,6 @@ data Box m c e
 hoistb :: Monad m => (forall a. m a -> n a) -> Box m c e -> Box n c e
 hoistb nat (Box c e) = Box (hoist nat c) (hoist nat e)
 
-type HBox m a = Box m a a
-
-instance MFunctor HBox where
-  hoist = hoistb
-
 instance (Functor m) => Profunctor (Box m) where
   dimap f g (Box c e) = Box (contramap f c) (fmap g e)
 
@@ -66,7 +61,7 @@ instance Category (Box Identity) where
 
 -- | composition of monadic boxes
 dotb :: (Monad m) => Box m a b -> Box m b c -> m (Box m a c)
-dotb (Box c e) (Box c' e') = glue c' e $> pure (Box c e')
+dotb (Box c e) (Box c' e') = glue c' e *> pure (Box c e')
 
 -- | Connect an emitter directly to a committer of the same type.
 --

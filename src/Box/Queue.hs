@@ -31,6 +31,7 @@ where
 import Box.Box
 import Box.Committer
 import Box.Emitter
+import Box.Cont
 import Control.Concurrent.Classy.Async as C
 import Control.Concurrent.Classy.STM as C
 import Control.Monad.Catch as C

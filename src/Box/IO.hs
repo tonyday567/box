@@ -55,7 +55,7 @@ fromStdin = Emitter $ Just <$> NumHask.Prelude.getLine
 -- I'm committed!
 -- True
 toStdout :: Committer IO Text
-toStdout = Committer $ \a -> putStrLn a $> pure True
+toStdout = Committer $ \a -> putStrLn a >> pure True
 
 -- | finite console emitter
 fromStdinN :: Int -> Cont IO (Emitter IO Text)
