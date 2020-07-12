@@ -16,6 +16,7 @@ module Box.Committer
     premapC,
     postmapC,
     stateC,
+    listC,
   )
 where
 
@@ -102,3 +103,8 @@ stateC :: (Monad m) => Committer (StateT [a] m) a
 stateC = Committer $ \a -> do
   modify (a :)
   pure True
+
+-- | list committer
+listC :: (Monad m) => Committer m a -> Committer m [a]
+listC c = Committer $ \as ->
+  any id <$> (sequence $ commit c <$> as)

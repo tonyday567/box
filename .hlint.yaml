@@ -4,6 +4,7 @@
 - ignore: {name: Use readTVarIO}
 - ignore: {name: Reduce duplication}
 - ignore: {name: Use tuple-section}
+- ignore: {name: Redundant flip}
 
 # To generate a suitable file for HLint do:
 # $ hlint --default > .hlint.yaml

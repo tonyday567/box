@@ -60,7 +60,7 @@ fromList_ xs c = flip evalStateT xs $ glue (hoist lift c) stateE
 -- > toList_ == toListE
 --
 toList_ :: (Monad m) => Emitter m a -> m [a]
-toList_ e = reverse <$> (flip execStateT [] $ glue stateC (hoist lift e))
+toList_ e = reverse <$> flip execStateT [] (glue stateC (hoist lift e))
 
 -- | take a list, emit it through a box, and output the committed result.
 --
@@ -90,7 +90,7 @@ sink1 f e = do
 
 -- | finite sink
 sink :: (MonadConc m) => Int -> (a -> m ()) -> Cont m (Committer m a)
-sink n f = commitQ $ replicateM_ n . (sink1 f)
+sink n f = commitQ $ replicateM_ n . sink1 f
 
 -- | singleton source
 source1 :: (Monad m) => m a -> Committer m a -> m ()
@@ -100,7 +100,7 @@ source1 a c = do
 
 -- | finite source
 source :: (MonadConc m) => Int -> m a -> Cont m (Emitter m a)
-source n f = emitQ $ replicateM_ n . (source1 f)
+source n f = emitQ $ replicateM_ n . source1 f
 
 -- | glues an emitter to a committer, then resupplies the emitter
 forkEmit :: (Monad m) => Emitter m a -> Committer m a -> Emitter m a
