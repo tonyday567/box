@@ -1,0 +1,8 @@
+:set -XNoImplicitPrelude
+:set -XDataKinds
+:set -XOverloadedLabels
+:set -XOverloadedStrings
+:set -XExtendedDefaultRules
+:set -XFlexibleContexts
+:set -XTypeFamilies
+:set -fno-warn-type-defaults

@@ -12,28 +12,25 @@
 -- Follows [pipes-concurrency](https://hackage.haskell.org/package/pipes-concurrency)
 module Box.Queue
   ( Queue (..),
-    queue,
     queueC,
-    queueC',
     queueE,
-    queueE',
-    queueCM,
-    queueCM',
-    queueEM,
-    queueEM',
     waitCancel,
     ends,
-    withQ,
     withQE,
     withQC,
     toBox,
+    toBoxM,
+    liftB,
     concurrentlyLeft,
     concurrentlyRight,
+    fromAction,
+    fuseActions,
   )
 where
 
 import Box.Box
 import Box.Committer
+import Box.Cont
 import Box.Emitter
 import Control.Concurrent.Classy.Async as C
 import Control.Concurrent.Classy.STM as C
@@ -110,20 +107,14 @@ toBox q = do
       seal
     )
 
+-- | turn a queue into a box (and a seal), and lift from stm to the underlying monad.
 toBoxM ::
   (MonadConc m) =>
   Queue a ->
   m (Box m a a, m ())
 toBoxM q = do
-  (i, o) <- atomically $ ends q
-  sealed <- atomically $ newTVarN "sealed" False
-  let seal = atomically $ writeTVar sealed True
-  pure
-    ( Box
-        (Committer (atomically . writeCheck sealed i))
-        (Emitter (atomically $ readCheck sealed o)),
-      seal
-    )
+  (b, s) <- atomically $ toBox q
+  pure (liftB b, atomically s)
 
 -- | wait for the first action, and then cancel the second
 waitCancel :: (MonadConc m) => m b -> m a -> m b
@@ -149,87 +140,33 @@ concurrentlyRight left right =
       C.wait b
 
 -- | connect a committer and emitter action via spawning a queue, and wait for both to complete.
-withQ ::
-  (MonadConc m) =>
-  Queue a ->
-  (Queue a -> (STM m) (Box (STM m) a a, (STM m) ())) ->
-  (Committer (STM m) a -> m l) ->
-  (Emitter (STM m) a -> m r) ->
-  m (l, r)
-withQ q spawner cio eio =
-  C.bracket
-    (atomically $ spawner q)
-    (\(_, seal) -> atomically seal)
-    ( \(box, seal) ->
-        C.concurrently
-          (cio (committer box) `C.finally` atomically seal)
-          (eio (emitter box) `C.finally` atomically seal)
-    )
-
--- | connect a committer and emitter action via spawning a queue, and wait for committer to complete.
 withQC ::
   (MonadConc m) =>
   Queue a ->
-  (Queue a -> (STM m) (Box (STM m) a a, (STM m) ())) ->
-  (Committer (STM m) a -> m l) ->
-  (Emitter (STM m) a -> m r) ->
+  (Queue a -> m (Box m a a, m ())) ->
+  (Committer m a -> m l) ->
+  (Emitter m a -> m r) ->
   m l
 withQC q spawner cio eio =
   C.bracket
-    (atomically $ spawner q)
-    (\(_, seal) -> atomically seal)
+    (spawner q)
+    snd
     ( \(box, seal) ->
         concurrentlyLeft
-          (cio (committer box) `C.finally` atomically seal)
-          (eio (emitter box) `C.finally` atomically seal)
+          (cio (committer box) `C.finally` seal)
+          (eio (emitter box) `C.finally` seal)
     )
 
--- | connect a committer and emitter action via spawning a queue, and wait for emitter to complete.
+-- | connect a committer and emitter action via spawning a queue, and wait for both to complete.
 withQE ::
   (MonadConc m) =>
   Queue a ->
-  (Queue a -> (STM m) (Box (STM m) a a, (STM m) ())) ->
-  (Committer (STM m) a -> m l) ->
-  (Emitter (STM m) a -> m r) ->
+  (Queue a -> m (Box m a a, m ())) ->
+  (Committer m a -> m l) ->
+  (Emitter m a -> m r) ->
   m r
 withQE q spawner cio eio =
   C.bracket
-    (atomically $ spawner q)
-    (\(_, seal) -> atomically seal)
-    ( \(box, seal) ->
-        concurrentlyRight
-          (cio (committer box) `C.finally` atomically seal)
-          (eio (emitter box) `C.finally` atomically seal)
-    )
-
--- | connect a committer and emitter action via spawning a queue, and wait for both to complete.
-withQM ::
-  (MonadConc m) =>
-  Queue a ->
-  (Queue a -> m (Box m a a, m ())) ->
-  (Committer m a -> m l) ->
-  (Emitter m a -> m r) ->
-  m (l, r)
-withQM q spawner cio eio =
-  C.bracket
-    (spawner q)
-    snd
-    ( \(box, seal) ->
-        C.concurrently
-          (cio (committer box) `C.finally` seal)
-          (eio (emitter box) `C.finally` seal)
-    )
-
--- | connect a committer and emitter action via spawning a queue, and wait for both to complete.
-withQEM ::
-  (MonadConc m) =>
-  Queue a ->
-  (Queue a -> m (Box m a a, m ())) ->
-  (Committer m a -> m l) ->
-  (Emitter m a -> m r) ->
-  m r
-withQEM q spawner cio eio =
-  C.bracket
     (spawner q)
     snd
     ( \(box, seal) ->
@@ -238,147 +175,33 @@ withQEM q spawner cio eio =
           (eio (emitter box) `C.finally` seal)
     )
 
--- | connect a committer and emitter action via spawning a queue, and wait for both to complete.
-withQCM ::
+-- | create an unbounded queue, returning the emitter result
+queueC ::
   (MonadConc m) =>
-  Queue a ->
-  (Queue a -> m (Box m a a, m ())) ->
   (Committer m a -> m l) ->
   (Emitter m a -> m r) ->
   m l
-withQCM q spawner cio eio =
-  C.bracket
-    (spawner q)
-    snd
-    ( \(box, seal) ->
-        concurrentlyLeft
-          (cio (committer box) `C.finally` seal)
-          (eio (emitter box) `C.finally` seal)
-    )
-
--- | create an unbounded queue
-queue ::
-  (MonadConc m) =>
-  (Committer (STM m) a -> m l) ->
-  (Emitter (STM m) a -> m r) ->
-  m (l, r)
-queue = withQ Unbounded toBox
+queueC cm em = withQC Unbounded toBoxM cm em
 
 -- | create an unbounded queue, returning the emitter result
 queueE ::
   (MonadConc m) =>
-  (Committer (STM m) a -> m l) ->
-  (Emitter (STM m) a -> m r) ->
-  m r
-queueE cm em = snd <$> withQ Unbounded toBox cm em
-
-queueE' ::
-  (MonadConc m) =>
-  (Committer (STM m) a -> m l) ->
-  (Emitter (STM m) a -> m r) ->
-  m r
-queueE' cm em = withQE Unbounded toBox cm em
-
--- | create an unbounded queue, returning the committer result
-queueC ::
-  (MonadConc m) =>
-  (Committer (STM m) a -> m l) ->
-  (Emitter (STM m) a -> m r) ->
-  m l
-queueC cm em = fst <$> withQ Unbounded toBox cm em
-
--- | create an unbounded queue, returning the committer result
-queueC' ::
-  (MonadConc m) =>
-  (Committer (STM m) a -> m l) ->
-  (Emitter (STM m) a -> m r) ->
-  m l
-queueC' cm em = withQC Unbounded toBox cm em
-
--- | create an unbounded queue, returning the emitter result
-queueCM ::
-  (MonadConc m) =>
-  (Committer m a -> m l) ->
-  (Emitter m a -> m r) ->
-  m l
-queueCM cm em = fst <$> withQM Unbounded toBoxM cm em
-
--- | create an unbounded queue, returning the emitter result
-queueCM' ::
-  (MonadConc m) =>
-  (Committer m a -> m l) ->
-  (Emitter m a -> m r) ->
-  m l
-queueCM' cm em = withQCM Unbounded toBoxM cm em
-
--- | create an unbounded queue, returning the emitter result
-queueEM ::
-  (MonadConc m) =>
   (Committer m a -> m l) ->
   (Emitter m a -> m r) ->
   m r
-queueEM cm em = snd <$> withQM Unbounded toBoxM cm em
+queueE cm em = withQE Unbounded toBoxM cm em
 
--- | create an unbounded queue, returning the emitter result
-queueEM' ::
-  (MonadConc m) =>
-  (Committer m a -> m l) ->
-  (Emitter m a -> m r) ->
-  m r
-queueEM' cm em = withQEM Unbounded toBoxM cm em
+-- | lift a box from STM
+liftB :: (MonadConc m) => Box (STM m) a b -> Box m a b
+liftB (Box c e) = Box (hoist atomically c) (hoist atomically e)
 
--- |
---
--- The one-in-the-chamber problem
---
--- This is the referential transparency refactoring I did to solve the one-in-the-chamber problem.  An etc process wasn't closing down when it should, until the committer fired once more:
---
--- -- etc () (Transducer $ \s -> s & S.takeWhile (/="q")) (Box <$> cStdout 2 <*> eStdin 2)
---
--- On entering a 'q' in stdin, this code piece requires another input from stdin before it shuts down.
+-- | turn a box action into a box continuation
+fromAction :: (MonadConc m) => (Box m a b -> m r) -> Cont m (Box m b a)
+fromAction baction = Cont $ fuseActions baction
 
--- > etc () (Transducer $ \s -> s & S.takeWhile (/="q")) (Box <$> cStdout 2 <*> eStdin 2)
--- etc substitution
--- > with (Box <$> cStdout 2 <*> eStdin 2) $ \(Box c e) -> (e & toStream & transduce (Transducer $ \s -> s & S.takeWhile (/="q")) & fromStream) c & flip execStateT ()
--- no state & transduction unwrapping
--- > with (Box <$> cStdout 2 <*> eStdin 2) $ \(Box c e) -> (e & toStream & S.takeWhile (/="q") & fromStream) c
--- subbing the IO's
--- > with (Box <$> (eStdout 2 & commitPlug) <*> (cStdin 2 & emitPlug)) $ \(Box c e) -> (e & toStream & transduce (Transducer $ \s -> s & S.takeWhile (/="q")) & fromStream) c
--- unplugging
--- > with (Box <$> (Cont $ \cio -> queueC cio (eStdout 2)) <*> (Cont $ \eio -> queueE (cStdin 2) eio)) $ \(Box c e) -> (e & toStream & S.takeWhile (/="q") & fromStream) c
--- fmapping the Box
--- > Cont (\r_ -> (Cont $ \cio -> queueC cio (eStdout 2)) `with` \x -> r_ (Box x))
--- twisting the with simplifying the Cont
--- > Cont (\r_ -> queueC (r_ . Box) (eStdout 2))
--- spaceship time!
--- > Cont (\r_ -> (Cont (\e -> queueC (e . Box) (eStdout 2))) `with` \f -> (Cont $ \eio -> queueE (cStdin 2) eio) `with` \x -> r_ (f x))
--- flipping the withs
--- > Cont (\r_ -> with (Cont (\e -> queueC (e . Box) (eStdout 2))) (\f -> with (Cont $ \eio -> queueE (cStdin 2) eio) (r_ . f)))
--- swallowing the withs
--- > with Cont (\r_ -> queueC ((\f -> queueE (cStdin 2) (r_ . f)) . Box) (eStdout 2))
-
--- subbing back in mainline
--- > with (Cont (\r_ -> queueC ((\f -> queueE (cStdin 2) (r_ . f)) . Box) (eStdout 2))) (\(Box c e) -> (e & toStream & S.takeWhile (/="q") & fromStream) c)
--- > queueC ((\f -> queueE (cStdin 2) ((\(Box c e) -> (e & toStream & S.takeWhile (/="q") & fromStream) c) . f)) . Box) (eStdout 2)
--- subbing queues - not ok here
--- > fmap fst (withQ Unbounded toBox ((\f -> queueE (cStdin 2) ((\(Box c e) -> (e & toStream & S.takeWhile (/="q") & fromStream) c) . f)) . Box) (eStdout 2))
--- subbing stdin and stdout - okhere
--- > fmap fst (withQ Unbounded toBox ((\f -> fmap snd (withQ Unbounded toBox (\c -> cStdin_ c *> cStdin_ c) ((\(Box c e) -> (e & toStream & S.takeWhile (/="q") & fromStream) c) . f))) . Box) (\e -> eStdout_ e *> eStdout_ e))
--- removes the second eStdout_ (still requires another stdin input before it closes up)
--- fmap fst (withQ Unbounded toBox ((\f -> fmap snd (withQ Unbounded toBox (\c -> cStdin_ c *> cStdin_ c) ((\(Box c e) -> (e & toStream & S.takeWhile (/="q") & fromStream) c) . f))) . Box) eStdout_)
--- remove surperfluous fsts and snds
--- > withQ Unbounded toBox ((\f -> (withQ Unbounded toBox (\c -> cStdin_ c *> cStdin_ c) ((\(Box c e) -> (e & toStream & S.takeWhile (/="q") & fromStream) c) . f))) . Box) eStdout_
--- IO (((),()), ())
--- an intuitive unwrapping of the f
--- > withQ Unbounded toBox (\c -> (withQ Unbounded toBox (\c' -> cStdin_ c' *> cStdin_ c') ((\e -> (e & toStream & S.takeWhile (/="q") & fromStream) c)))) eStdout_
-
-{-
-
-And here was the problem is much easier to see. The withQ's were waiting on both sides of the queue.
-
-I replaced `snd <$> withQ` with `withQE`
-
--}
-
--- subbing withQE fixes!
--- withQ Unbounded toBox (\c -> (withQE Unbounded toBox (\c' -> cStdin_ c' *> cStdin_ c') ((\e -> (fromStream . S.takeWhile (/="q") . toStream $ e) c)))) eStdout_
+-- | connect up two box actions via two queues
+fuseActions :: (MonadConc m) => (Box m a b -> m r) -> (Box m b a -> m r') -> m r'
+fuseActions abm bam = do
+  (Box ca ea, _) <- toBoxM Unbounded
+  (Box cb eb, _) <- toBoxM Unbounded
+  concurrentlyRight (abm (Box ca eb)) (bam (Box cb ea))

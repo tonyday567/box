@@ -1,31 +1,28 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE NoImplicitPrelude #-}
 {-# OPTIONS_GHC -Wall #-}
 
 -- | `commit`
 module Box.Committer
   ( Committer (..),
     drain,
-    liftC,
-    cmap,
-    handles,
-    addC,
-    postaddC,
-    stateListC,
-    toListC',
+    mapC,
+    premapC,
+    postmapC,
+    stateC,
+    listC,
   )
 where
 
-import Control.Lens hiding ((.>), (:>), (<|), (|>))
-import Control.Monad.Conc.Class as C
+import Data.Functor.Contravariant
 import Data.Functor.Contravariant.Divisible
-import NumHask.Prelude hiding (STM, atomically)
+import NumHask.Prelude
 
 -- | a Committer a "commits" values of type a. A Sink and a Consumer are some other metaphors for this.
 --
@@ -72,13 +69,9 @@ instance (Applicative m) => Decidable (Committer m) where
 drain :: (Applicative m) => Committer m a
 drain = Committer (\_ -> pure True)
 
--- | lift a committer from STM
-liftC :: (MonadConc m) => Committer (STM m) a -> Committer m a
-liftC = hoist atomically
-
 -- | This is a contramapMaybe, if such a thing existed, as the contravariant version of a mapMaybe.  See [witherable](https://hackage.haskell.org/package/witherable)
-cmap :: (Monad m) => (b -> m (Maybe a)) -> Committer m a -> Committer m b
-cmap f c = Committer go
+mapC :: (Monad m) => (b -> m (Maybe a)) -> Committer m a -> Committer m b
+mapC f c = Committer go
   where
     go b = do
       fb <- f b
@@ -86,47 +79,32 @@ cmap f c = Committer go
         Nothing -> pure True
         Just fb' -> commit c fb'
 
--- | prism handler
-handles ::
-  (Monad m) =>
-  -- |
-  ((b -> Constant (First b) b) -> (a -> Constant (First b) a)) ->
-  -- |
-  Committer m b ->
-  Committer m a
-handles k (Committer commit_) =
-  Committer
-    ( \a ->
-        case match a of
-          Nothing -> return False
-          Just b -> commit_ b
-    )
-  where
-    match = getFirst . getConstant . k (Constant . First . Just)
-
 -- | adds a monadic action to the committer
-addC :: (Applicative m) =>
-    (Committer m a -> m ())
-    -> Committer m a
-    -> Committer m a
-addC f c = Committer $ \a -> f c *> commit c a
+premapC ::
+  (Applicative m) =>
+  (Committer m a -> m ()) ->
+  Committer m a ->
+  Committer m a
+premapC f c = Committer $ \a -> f c *> commit c a
 
 -- | adds a post-commit monadic action to the committer
-postaddC :: (Monad m) =>
-    (Committer m a -> m ())
-    -> Committer m a
-    -> Committer m a
-postaddC f c = Committer $ \a -> do
+postmapC ::
+  (Monad m) =>
+  (Committer m a -> m ()) ->
+  Committer m a ->
+  Committer m a
+postmapC f c = Committer $ \a -> do
   r <- commit c a
   f c
   pure r
 
-stateListC :: (Monad m) => Committer (StateT [a] m) a
-stateListC = Committer $ \a -> do
-  modify (a:)
+-- | commit to a StateT list
+stateC :: (Monad m) => Committer (StateT [a] m) a
+stateC = Committer $ \a -> do
+  modify (a :)
   pure True
 
-toListC' :: (Monad m) => (Committer (StateT [a] m) a -> StateT [a] m a) -> m [a]
-toListC' cio = execStateT (cio stateListC) []
-
-
+-- | list committer
+listC :: (Monad m) => Committer m a -> Committer m [a]
+listC c = Committer $ \as ->
+  any id <$> (sequence $ commit c <$> as)

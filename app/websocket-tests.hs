@@ -1,31 +1,32 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE NoImplicitPrelude #-}
 {-# OPTIONS_GHC -Wall #-}
+{-# OPTIONS_GHC -Wno-unused-do-bind #-}
 
 {-
 
-FIXME:
-
-Models a websocket connection:
-
-The client socket reads (Either ControlRequest Text) from stdin.
-
-The server socket processes Left ControlRequests and echoes Right text messages back to the client.
-
-The client prints received messages to stdout.
+Models a websocket connection
 
 -}
 
 module Main where
 
 import Box
-import Box.Control
-import Control.Lens
+import qualified Control.Concurrent.Classy.Async as C
+import Control.Lens hiding (Unwrapped, Wrapped)
+import Control.Monad.Catch
+import Control.Monad.Conc.Class as C
 import Data.Generics.Labels ()
 import qualified Network.WebSockets as WS
-import NumHask.Prelude hiding (STM)
+import NumHask.Prelude hiding (STM, bracket)
+import Options.Generic
 
 data ConfigSocket
   = ConfigSocket
@@ -38,155 +39,142 @@ data ConfigSocket
 defaultConfigSocket :: ConfigSocket
 defaultConfigSocket = ConfigSocket "127.0.0.1" 9160 "/"
 
-client :: ConfigSocket -> WS.ClientApp () -> IO ()
-client c = WS.runClient (unpack $ c ^. #host) (c ^. #port) (unpack $ c ^. #path)
+client :: (MonadIO m) => ConfigSocket -> WS.ClientApp () -> m ()
+client c app = liftIO $ WS.runClient (unpack $ c ^. #host) (c ^. #port) (unpack $ c ^. #path) app
 
-server :: ConfigSocket -> WS.ServerApp -> IO ()
-server c = WS.runServer (unpack $ c ^. #host) (c ^. #port)
+server :: (MonadIO m) => ConfigSocket -> WS.ServerApp -> m ()
+server c app = liftIO $ WS.runServer (unpack $ c ^. #host) (c ^. #port) app
 
-con :: WS.PendingConnection -> Cont IO WS.Connection
-con p = Cont $
-    bracket
-      (WS.acceptRequest p)
-      (\conn -> WS.sendClose conn ("Bye from con!" :: Text))
+con :: (MonadMask m, MonadIO m) => WS.PendingConnection -> Cont m WS.Connection
+con p = Cont $ \action ->
+  bracket
+    (liftIO $ WS.acceptRequest p)
+    (\conn -> liftIO $ WS.sendClose conn ("Bye from con!" :: Text))
+    action
+
+clientApp ::
+  (MonadIO m, MonadConc m) =>
+  Box m (Either Text Text) Text ->
+  WS.Connection ->
+  m ()
+clientApp (Box c e) conn =
+  void $
+    C.race
+      (receiver c conn)
+      (sender (Box mempty e) conn)
+
+serverApp ::
+  WS.PendingConnection ->
+  IO ()
+serverApp p =
+  with
+    (con p)
+    ( responder
+        (\x -> bool (Right $ "echo:" <> x) (Left "quit") (x == "q"))
+        mempty
+    )
+
+serverIO :: IO ()
+serverIO = server defaultConfigSocket serverApp
+
+clientIO :: IO ()
+clientIO =
+  (client defaultConfigSocket . clientApp)
+    (Box (contramap show toStdout) fromStdin)
+
+data SocketType = Client | Responder | TestRun deriving (Eq, Read, Show, Generic)
+
+instance ParseField SocketType
+
+instance ParseRecord SocketType
+
+instance ParseFields SocketType
+
+data Opts w
+  = Opts
+      { apptype :: w ::: SocketType <?> "type of websocket app"
+      }
+  deriving (Generic)
+
+instance ParseRecord (Opts Wrapped)
+
+main :: IO ()
+main = do
+  o :: Opts Unwrapped <- unwrapRecord "example websocket apps"
+  r :: Text <- case apptype o of
+    Client -> show <$> clientIO
+    Responder -> show <$> q serverIO
+    TestRun -> show <$> testRun
+  putStrLn r
 
 -- | default websocket receiver
+-- Lefts are info/debug
 receiver ::
-  Committer IO (Either ControlResponse Text) ->
+  (MonadIO m) =>
+  Committer m (Either Text Text) ->
   WS.Connection ->
-  IO Bool
+  m Bool
 receiver c conn = go
   where
     go = do
-      msg <- WS.receive conn
+      msg <- liftIO $ WS.receive conn
       case msg of
         WS.ControlMessage (WS.Close w b) ->
           commit
             c
             ( Left
-                ( Info $
-                    "receiver: received: close: " <> show w <> " " <> show b
+                ( "receiver: received: close: " <> show w <> " " <> show b
                 )
             )
         WS.ControlMessage _ -> go
         WS.DataMessage _ _ _ msg' -> do
-          putStrLn $ "receiver: received: " <> (WS.fromDataMessage msg' :: Text)
+          commit c $ Left $ "receiver: received: " <> (WS.fromDataMessage msg' :: Text)
           _ <- commit c (Right (WS.fromDataMessage msg'))
           go
 
 -- | default websocket sender
 sender ::
-  (WS.WebSocketsData a, Show a) =>
-  Emitter IO a ->
+  (MonadIO m, WS.WebSocketsData a, Show a) =>
+  Box m Text a ->
   WS.Connection ->
-  IO ()
-sender e conn = forever $ do
+  m ()
+sender (Box c e) conn = forever $ do
   msg <- emit e
   case msg of
     Nothing -> pure ()
     Just msg' -> do
-      putStrLn $ "sender: sending: " <> (show msg' :: Text)
-      WS.sendTextData conn msg'
+      commit c $ "sender: sending: " <> (show msg' :: Text)
+      liftIO $ WS.sendTextData conn msg'
 
-clientApp ::
-  Box IO (Either ControlResponse Text) Text ->
-  WS.ClientApp ()
-clientApp (Box c e) conn =
-  void $
-    concurrently
-      (receiver c conn)
-      (sender e conn)
-
-clientApp' ::
-  Box IO (Either ControlResponse Text) Text ->
-  WS.ClientApp ()
-clientApp' (Box c e) conn =
-  void $
-    race
-      (receiver c conn)
-      (sender e conn)
-
--- | single uncontrolled client
-clientBox ::
-  ConfigSocket ->
-  IO ()
-clientBox cfg =
-  Box.with (liftB <$> (Box <$> showStdout <*> readStdin)) (client cfg . clientApp)
-
-clientBox' ::
-  ConfigSocket ->
-  IO ()
-clientBox' cfg =
-  Box.with ((Box <$> (liftC <$> showStdout) <*> (liftE <$> eStdin'))) (client cfg . clientApp')
-
--- | a receiver that immediately sends a response
+-- | a receiver that responds based on received Text.
+-- lefts are quit signals. Rights are response text.
 responder ::
-  (Text -> Either ControlResponse Text) ->
+  (MonadIO m) =>
+  (Text -> Either Text Text) ->
+  Committer m Text ->
   WS.Connection ->
-  IO ()
-responder f conn = go
+  m ()
+responder f c conn = go
   where
     go = do
-      msg <- WS.receive conn
+      msg <- liftIO $ WS.receive conn
       case msg of
         WS.ControlMessage (WS.Close _ _) -> do
-          WS.sendClose conn ("returning close signal" :: Text)
-        WS.ControlMessage _ -> go
-        WS.DataMessage _ _ _ msg' ->
-          case (f $ WS.fromDataMessage msg') of
-            Right t -> do
-              WS.sendTextData conn t
-              putStrLn $ ("responder: received: " <> WS.fromDataMessage msg' :: Text)
-              go
-            Left ShuttingDown -> do
-              WS.sendClose conn ("received ShuttingDown signal" :: Text)
-              putStrLn $ ("responder: closing" :: Text)
-            Left _ -> go
-
--- | a receiver that responds based on received Text
-responder' ::
-  (Text -> IO Text) ->
-  WS.Connection ->
-  IO ()
-responder' f conn = go
-  where
-    go = do
-      msg <- WS.receive conn
-      case msg of
-        WS.ControlMessage (WS.Close _ _) -> do
-          WS.sendClose conn ("received close signal: responder closed." :: Text)
+          commit c "responder: normal close"
+          liftIO $ WS.sendClose conn ("received close signal: responder closed." :: Text)
         WS.ControlMessage _ -> go
         WS.DataMessage _ _ _ msg' -> do
-          r <- (f $ WS.fromDataMessage msg')
-          WS.sendTextData conn r
-          go
+          case (f $ WS.fromDataMessage msg') of
+            Left _ -> do
+              commit c "responder: sender initiated close"
+              liftIO $ WS.sendClose conn ("received close signal: responder closed." :: Text)
+            Right r -> do
+              commit c ("responder: sending" <> r)
+              liftIO $ WS.sendTextData conn r
+              go
 
-serverApp ::
-  WS.PendingConnection ->
-  IO ()
-serverApp p = Box.with (con p) (responder' (\x -> pure ("echo:" <> x)))
-
--- | controlled server
-serverBox ::
-  ConfigSocket ->
-  IO ()
-serverBox cfg =
-  Box.with
-    (Box <$> showStdout <*> readStdin)
-    (controlBox (ControlConfig 3 True Nothing True) (server cfg serverApp))
-
-server' :: IO ()
-server' = do
-  withAsync
-    (server defaultConfigSocket serverApp)
-    (\_ -> Box.with (liftE <$> eStdin 5) cancelQ)
-
-testServer :: IO ()
-testServer = serverBox defaultConfigSocket
-
-testClient :: IO ()
-testClient = clientBox' defaultConfigSocket
-
+q :: IO a -> IO (Either () a)
+q f = race (cancelQ fromStdin) f
 
 cancelQ :: Emitter IO Text -> IO ()
 cancelQ e = do
@@ -197,12 +185,33 @@ cancelQ e = do
       putStrLn ("nothing happens" :: Text)
       cancelQ e
 
-main :: IO ()
-main = server'
+-- | test of clientApp via a cRef committer and a canned list of Text
+tClient :: [Text] -> IO [Either Text Text]
+tClient xs = do
+  (c, r) <- cRef
+  client
+    defaultConfigSocket
+    ( \conn ->
+        (\b -> clientApp b conn)
+          <$.> ( Box
+                   <$> pure c
+                   <*> fromListE (xs <> ["q"])
+               )
+    )
+  r
 
-testRun :: IO ()
+tClientIO :: [Text] -> IO ()
+tClientIO xs =
+  (client defaultConfigSocket . clientApp)
+    <$.> (Box (contramap show toStdout) <$> (fromListE (xs <> ["q"])))
+
+-- | main test run of client-server functionality
+-- the code starts a server in a thread, starts the client in the main thread, and cancels the server on completion.
+-- > testRun
+-- [Left "receiver: received: echo:1",Right "echo:1",Left "receiver: received: echo:2",Right "echo:2",Left "receiver: received: echo:3",Right "echo:3",Left "receiver: received: close: 1000 \"received close signal: responder closed.\""]
+testRun :: IO [Either Text Text]
 testRun = do
-  withAsync
-    (server defaultConfigSocket serverApp)
-    (\a -> sleep 10 >> cancel a)
-
+  a <- async (server defaultConfigSocket serverApp)
+  r <- tClient (show <$> [1 .. 3 :: Int])
+  cancel a
+  pure r

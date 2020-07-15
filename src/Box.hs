@@ -1,160 +1,257 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -Wall #-}
 
--- | Boxes that `emit`, `transduce` & `commit`
+-- | Effectful, profunctor boxes designed for concurrency.
 --
 -- This library follows the ideas and code from [pipes-concurrency](https://hackage.haskell.org/package/pipes-concurrency) and [mvc](https://hackage.haskell.org/package/mvc) but with some polymorphic tweaks and definitively more pretentious names.
 module Box
   ( -- $setup
+    -- $continuations
+    -- $boxes
     -- $commit
     -- $emit
-    -- $transduce
+    -- $state
+    -- $finite
     module Box.Box,
-    module Box.Broadcast,
     module Box.Committer,
     module Box.Connectors,
     module Box.Cont,
     module Box.Emitter,
     module Box.IO,
-    module Box.Plugs,
     module Box.Queue,
-    module Box.Stream,
     module Box.Time,
     module Box.Transducer,
   )
 where
 
 import Box.Box
-import Box.Broadcast
 import Box.Committer
 import Box.Connectors
 import Box.Cont
 import Box.Emitter
 import Box.IO
-import Box.Plugs
 import Box.Queue
-import Box.Stream
 import Box.Time
 import Box.Transducer
 
--- $setup
--- >>> :set -XOverloadedStrings
--- >>> :set -XGADTs
--- >>> :set -XNoImplicitPrelude
--- >>> import Data.Functor.Contravariant
--- >>> import Box
--- >>> import qualified Streaming.Prelude as S
--- >>> import Control.Monad.Conc.Class as C
--- >>> import Data.Text (Text)
--- >>> import qualified Data.Text as Text
--- >>> import Control.Applicative
--- >>> import Control.Lens ((&))
--- >>> let committer' = cStdout 100
--- >>> let emitter' = toEmit (S.each ["hi","bye","q","x"])
--- >>> let box' = Box <$> committer' <*> emitter'
--- >>> let transducer' = Transducer $ \s -> s & S.takeWhile (/="q") & S.map ("echo: " <>)
+{- $setup
+>>> :set -XOverloadedStrings
+>>> :set -XGADTs
+>>> :set -XNoImplicitPrelude
+>>> :set -XFlexibleContexts
+>>> import NumHask.Prelude
+>>> import qualified Prelude as P
+>>> import Data.Functor.Contravariant
+>>> import Box
+>>> import qualified Streaming.Prelude as S
+>>> import Control.Monad.Conc.Class as C
+>>> import Control.Lens
+-}
 
--- | emitting
--- > flip (with . fmap toListE . fromListE) id == pure
--- >>> with (fromListE [1..3]) toListE
--- [1,2,3]
---
--- > fuse (pure . Just) $ Box <$> (liftC <$> showStdout) <*> (fromListE [1..3::Int])
 
--- $commit
--- committing
---
--- >>> with (cStdout 100) $ \c -> C.atomically (commit c "something")
--- something
--- True
---
--- The monoid instance sends each commit to both mappended committers. Because everything is concurrent, race effects are common on stdout, so we introduce some delaying effects to (hopefully) avoid races.
---
--- >>> let cFast = cmap (\b -> sleep 0.01 >> pure (Just b)) . liftC . contramap ("fast: " <>) <$> (cStdout 100)
--- >>> let cSlow = cmap (\b -> sleep 0.1 >> pure (Just b)) . liftC . contramap ("slow: " <>) <$> (cStdout 100)
--- >>> (etcM () transducer' $ (Box <$> (cFast <> cSlow) <*> (liftE <$> emitter'))) >> sleep 1
--- fast: echo: hi
--- slow: echo: hi
--- fast: echo: bye
--- slow: echo: bye
---
--- >>> let c = fmap liftC $ cStdout 10
--- >>> let e = fmap liftE $ toEmit (S.each ["hi","bye","q","x"])
--- >>> let c' = cmap (\a -> if a=="q" then (sleep 0.1 >> putStrLn "stolen!" >> sleep 0.1 >> pure (Nothing)) else (pure (Just a))) <$> c :: Cont IO (Committer IO Text)
--- >>> fuse (pure . pure) $ Box <$> c' <*> e
--- hi
--- bye
--- stolen!
--- x
---
--- prism handler
---
--- >>> import Control.Lens (_Right)
--- >>> let e2 = (fmap (\x -> Right (x <> "_right")) <$> e) <> (fmap (\x -> Left (x <> "_left")) <$> e)
--- >>> let cright = handles _Right <$> c
--- >>> fuse (pure . pure) $ Box <$> cright <*> e2
--- hi_right
--- bye_right
--- q_right
--- x_right
---
--- | splitCommit
--- Splits a committer into two.
--- >>> let cs = splitCommit (liftC <$> cStdout 100)
--- >>> let cc = contCommit <$> cs <*> pure (cmap (\b -> sleep 0.01 >> pure (Just b)) . contramap ("cont: " <>))
--- >>> etcM () transducer' $ (Box <$> cc <*> (liftE <$> emitter'))
--- echo: hi
--- echo: bye
--- cont: echo: hi
--- cont: echo: bye
+{- $continuations
 
--- $emit
---
--- >>> with (S.each [0..] & toEmit) (C.atomically . emit) >>= print
--- Just 0
---
--- >>> let c = fmap liftC $ cStdout 10
--- >>> let e = fmap liftE $ toEmit (S.each ["hi","bye","q","x"])
--- >>> let e' = emap (\a -> if a=="q" then (sleep 0.1 >> putStrLn "stole a q!" >> sleep 0.1 >> pure (Nothing)) else (pure (Just a))) <$> e :: Cont IO (Emitter IO Text)
--- >>> fuse (pure . pure) $ Box <$> c <*> e'
--- hi
--- bye
--- stole a q!
--- x
---
--- >>> let e1 = fmap (Text.pack . show) <$> (toEmit $ delayTimed (S.each (zip ((0.2*) . fromIntegral <$> [1..10]) ['a'..]))) :: Cont IO (Emitter (C.STM IO) Text)
--- >>> let e2 = fmap (Text.pack . show) <$> (toEmit $ delayTimed (S.each (zip ((0.1+) . (0.2*) . fromIntegral <$> [1..10]) (reverse ['a'..'z'])))) :: Cont IO (Emitter (C.STM IO) Text)
--- >>> let e12 = e1 <> e2
--- >>> etc () (Transducer id) $ Box <$> cStdout 6 <*> emerge ((,) <$> e1 <*> e2)
--- 'a'
--- 'z'
--- 'b'
--- 'y'
--- 'c'
--- 'x'
---
--- >>> etc () (Transducer id) $ Box <$> cStdout 6 <*> (liftA2 (<>) e1 e2)
--- 'a'
--- 'z'
--- 'b'
--- 'y'
--- 'c'
--- 'x'
+Continuations are very common in the API with 'Cont' as an inhouse type.
 
--- $transduce
---
--- >>> etc () transducer' box'
--- echo: hi
--- echo: bye
+>>> :t fromListE [1..3::Int]
+fromListE [1..3::Int] :: MonadConc m => Cont m (Emitter m Int)
 
--- | broadcasting
---
--- >>> (bcast, bcom) <- (C.atomically broadcast) :: IO (Broadcaster (C.STM IO) Text, Committer (C.STM IO) Text)
---
--- > (funn, fem) <- C.atomically funnel
--- >
+The applicative is usually the easiest way to think about and combine continuations with their unadorned counterparts.
+
+>>> let box' = Box <$> pure toStdout <*> fromListE ["a", "b" :: Text]
+>>> :t box'
+box' :: Cont IO (Box IO Text Text)
+
+-}
+
+{- $boxes
+
+The basic ways of connecting up a box are all related as follows:
+
+> glue c e == glueb (Box c e)
+> glueb == fuse (pure . pure) == etc () (Transducer id)
+
+>>> fromToList_ [1..3] glueb
+[1,2,3]
+
+>>> fromToList_ [1..3] (fuse (pure . pure))
+[1,2,3]
+
+>>> fromToList_ [1..3] (etc () (Transducer id))
+[1,2,3]
+
+1. glue: direct fusion of committer and emitter
+
+>>> runCont $ glue <$> pure toStdout <*> fromListE (show <$> [1..3])
+1
+2
+3
+
+Variations to the above code include:
+
+Use of continuation applicative operators:
+
+- the '(<*.>)' operator is short hand for runCont $ xyz '(<*>)' zy.
+
+- the '(<$.>)' operator is short hand for runCont $ xyz '(<$>)' zy.
+
+> glue <$> pure toStdout <*.> fromListE (show <$> [1..3])
+> glue toStdout <$.> fromListE (show <$> [1..3])
+
+Changing the type in the Emitter (The double fmap is cutting through the Cont and Emitter layers):
+
+> glue toStdout <$.> fmap (fmap show) (fromListE [1..3])
+
+Changing the type in the committer (which is Contrvariant so needs to be a contramap):
+
+> glue (contramap show toStdout) <$.> fromListE [1..3]
+
+Using the box version of glue:
+
+> glueb <$.> (Box <$> pure toStdout <*> (fmap show <$> fromListE [1..3]))
+
+2. fusion of a box, with an (a -> m (Maybe b)) function to allow for mapping, filtering and simple effects.
+
+>>> let box' = Box <$> pure toStdout <*> fromListE (show <$> [1..3])
+>>> fuse (\a -> bool (pure $ Just $ "echo: " <> a) (pure Nothing) (a==("2"::Text))) <$.> box'
+echo: 1
+echo: 3
+
+3. Transduction
+
+For complicated branching and layering, the library provides an API into the streaming library, via 'etc'.
+
+>>> :t etc
+etc :: Monad m => s -> Transducer s a b -> Box m b a -> m s
+
+A 'Transducer' is a pure, stateful stream to stream transformation that is highly composable, abstraction leakage-proof and has a category instance.
+
+'etc' stands for emit -> transduce -> commit, and can be considered a distant relative of the model-view-controller abstraction.
+
+>>> let transducer' = Transducer $ \s -> s & S.takeWhile (/="3") & S.chain (const (modify (+1))) & S.map ("echo: " <>)
+>>> etc 0 transducer' <$.> box'
+echo: 1
+echo: 2
+2
+
+-}
+
+{- $commit
+
+>>> commit toStdout "I'm committed!"
+I'm committed!
+True
+
+Use mapC to modify a Committer and introduce effects.
+
+>>> let c = mapC (\a -> if a==2 then (sleep 0.1 >> putStrLn "stole a 2!" >> sleep 0.1 >> pure (Nothing)) else (pure (Just a))) (contramap (show :: Int -> Text) toStdout)
+>>> glueb <$.> (Box <$> pure c <*> fromListE [1..3])
+1
+stole a 2!
+3
+
+The monoid instance of Committer sends each commit to both mappended committers. Because effects are also mappended together, the committed result is not always what is expected.
+
+>>> let cFast = mapC (\b -> pure (Just b)) . contramap ("fast: " <>) $ toStdout
+>>> let cSlow = mapC (\b -> sleep 0.1 >> pure (Just b)) . contramap ("slow: " <>) $ toStdout
+>>> (glueb <$.> (Box <$> pure (cFast <> cSlow) <*> fromListE (show <$> [1..3]))) <* sleep 1
+fast: 1
+slow: 1
+fast: 2
+slow: 2
+fast: 3
+slow: 3
+
+To approximate what is intuitively expected, use 'concurrentC'.
+
+>>> runCont $ (fromList_ (show <$> [1..3]) <$> (concurrentC cFast cSlow)) <> pure (sleep 1)
+fast: 1
+fast: 2
+fast: 3
+slow: 1
+slow: 2
+slow: 3
+
+This is all non-deterministic, hence the necessity for messy delays and heuristic avoidance of console races.
+
+-}
+
+{- $emit
+
+>>> ("I'm emitted!" :: Text) & Just & pure & Emitter & emit >>= print
+Just "I'm emitted!"
+
+>>> with (fromListE [1]) (\e' -> (emit e' & fmap show :: IO Text) >>= putStrLn & replicate 3 & sequence_)
+Just 1
+Nothing
+Nothing
+
+>>> toListE <$.> (fromListE [1..3])
+[1,2,3]
+
+The monoid instance is left-biased.
+
+>>> toListE <$.> (fromListE [1..3] <> fromListE [7..9])
+[1,2,3,7,8,9]
+
+Use concurrentE to get some nondeterministic balance.
+
+> let es = (join $ concurrentE <$> (fromListE [1..3]) <*> (fromListE [7..9]))
+> glue (contramap show toStdout) <$.> es
+1
+2
+7
+3
+8
+9
+
+-}
+
+{- $state
+
+State committers and emitters are related as follows:
+
+>>> runIdentity $ fmap (reverse . fst) $ flip execStateT ([],[1..4]) $ glue (hoist (zoom _1) stateC) (hoist (zoom _2) stateE)
+[1,2,3,4]
+
+For some reason, related to a lack of an MFunctor instance for Cont, but exactly not yet categorically pinned to a wall, the following compiles but is wrong.
+
+>>> flip runStateT [] $ runCont $ glue <$> pure stateC <*> fromListE [1..4]
+((),[])
+
+-}
+
+{- $finite
+
+Most committers and emitters will run forever until:
+
+- the glued or fused other-side returns.
+- the Transducer, stream or monadic action returns.
+
+Finite ends (collective noun for emitters and committers) can be created with 'sink' and 'source' eg
+
+>>> glue <$> contramap (show :: Int -> Text) <$> (sink 5 putStrLn) <*.> fromListE [1..]
+1
+2
+3
+4
+5
+
+Two infinite ends will tend to run infinitely.
+
+> glue <$> pure (contramap show toStdout) <*.> fromListE [1..]
+
+1
+2
+...
+💁
+∞
+
+-}
+

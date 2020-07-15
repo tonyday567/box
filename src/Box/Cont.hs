@@ -7,7 +7,11 @@
 -- | A continuation type.
 module Box.Cont
   ( Cont (..),
+    runCont,
+    (<$.>),
+    (<*.>),
     Cont_ (..),
+    runCont_,
   )
 where
 
@@ -48,6 +52,10 @@ instance (Functor m, Semigroup a, Monoid a) => Monoid (Cont m a) where
 
   mappend = (<>)
 
+-- | finally run a continuation
+runCont :: Cont m (m r) -> m r
+runCont x = with x id
+
 -- | sometimes you have no choice but to void it up
 newtype Cont_ m a
   = Cont_
@@ -82,3 +90,23 @@ instance (Functor m, Semigroup a, Monoid a) => Monoid (Cont_ m a) where
   mempty = pure mempty
 
   mappend = (<>)
+
+-- | finally run a Cont_
+runCont_ :: Cont_ m (m ()) -> m ()
+runCont_ x = with_ x id
+
+infixr 3 <$.>
+
+-- | fmap over a continuation and then run the result.
+--
+-- The . position is towards the continuation
+(<$.>) :: (a -> m r) -> Cont m a -> m r
+(<$.>) f a = runCont (fmap f a)
+
+infixr 3 <*.>
+
+-- | fmap over a continuation and then run the result.
+--
+-- The . position is towards the continuation
+(<*.>) :: Cont m (a -> m r) -> Cont m a -> m r
+(<*.>) f a = runCont (f <*> a)

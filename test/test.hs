@@ -11,4 +11,5 @@ main = doctest
   [ "src/Box.hs",
     -- "src/Box/Committer.hs",
     "src/Box/IO.hs"
+    -- "app/websocket-tests.hs"
   ]

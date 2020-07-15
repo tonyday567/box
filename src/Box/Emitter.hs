@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -11,24 +12,22 @@
 -- | `emit`
 module Box.Emitter
   ( Emitter (..),
-    liftE,
-    emap,
-    keeps,
-    eRead,
-    eParse,
-    addE,
-    postaddE,
+    mapE,
+    readE,
+    readE_,
+    parseE,
+    parseE_,
+    premapE,
+    postmapE,
+    postmapM,
     toListE,
     unlistE,
-    addM,
-    fromListES,
-    fromListE',
+    stateE,
   )
 where
 
-import Control.Monad.Conc.Class as C
 import qualified Data.Attoparsec.Text as A
-import NumHask.Prelude hiding (STM, atomically)
+import NumHask.Prelude
 
 -- | an `Emitter` "emits" values of type a. A Source & a Producer (of a's) are the two other alternative but overloaded metaphors out there.
 --
@@ -82,13 +81,9 @@ instance (Alternative m, Monad m) => Monoid (Emitter m a) where
 
   mappend = (<>)
 
--- | lift an STM emitter
-liftE :: (MonadConc m) => Emitter (STM m) a -> Emitter m a
-liftE = hoist atomically
-
 -- | like a monadic mapMaybe. (See [witherable](https://hackage.haskell.org/package/witherable))
-emap :: (Monad m) => (a -> m (Maybe b)) -> Emitter m a -> Emitter m b
-emap f e = Emitter go
+mapE :: (Monad m) => (a -> m (Maybe b)) -> Emitter m a -> Emitter m b
+mapE f e = Emitter go
   where
     go = do
       a <- emit e
@@ -100,65 +95,59 @@ emap f e = Emitter go
             Nothing -> go
             Just fa' -> pure (Just fa')
 
--- | prism handler
-keeps ::
-  (Monad m) =>
-  -- |
-  ((b -> Constant (First b) b) -> (a -> Constant (First b) a)) ->
-  -- |
-  Emitter m a ->
-  Emitter m b
-keeps k (Emitter emit_) = Emitter emit_'
-  where
-    emit_' = do
-      ma <- emit_
-      case ma of
-        Nothing -> return Nothing
-        Just a ->
-          case match a of
-            Nothing -> emit_'
-            Just b -> return (Just b)
-    match = getFirst . getConstant . k (Constant . First . Just)
-
 -- | parse emitter which returns the original text on failure
-eParse :: (Functor m) => A.Parser a -> Emitter m Text -> Emitter m (Either Text a)
-eParse parser e = (\t -> either (const $ Left t) Right (A.parseOnly parser t)) <$> e
+parseE :: (Functor m) => A.Parser a -> Emitter m Text -> Emitter m (Either Text a)
+parseE parser e = (\t -> either (const $ Left t) Right (A.parseOnly parser t)) <$> e
 
--- | read parse emitter
-eRead ::
+-- | no error-reporting parsing
+parseE_ :: (Monad m) => A.Parser a -> Emitter m Text -> Emitter m a
+parseE_ parser = mapE (pure . (either (const Nothing) Just)) . parseE parser
+
+-- | read parse emitter, returning the original string on error
+readE ::
   (Functor m, Read a) =>
   Emitter m Text ->
   Emitter m (Either Text a)
-eRead = fmap $ parsed . unpack
+readE = fmap $ parsed . unpack
   where
     parsed str =
       case reads str of
         [(a, "")] -> Right a
         _ -> Left (pack str)
 
+-- | no error-reporting reading
+readE_ ::
+  (Monad m, Read a) =>
+  Emitter m Text ->
+  Emitter m a
+readE_ = mapE (pure . (either (const Nothing) Just)) . readE
+
 -- | adds a pre-emit monadic action to the emitter
-addE :: (Applicative m) =>
-    (Emitter m a -> m ())
-    -> Emitter m a
-    -> Emitter m a
-addE f e = Emitter $ f e *> emit e
+premapE ::
+  (Applicative m) =>
+  (Emitter m a -> m ()) ->
+  Emitter m a ->
+  Emitter m a
+premapE f e = Emitter $ f e *> emit e
 
 -- | adds a post-emit monadic action to the emitter
-postaddE :: (Monad m) =>
-    (Emitter m a -> m ())
-    -> Emitter m a
-    -> Emitter m a
-postaddE f e = Emitter $ do
+postmapE ::
+  (Monad m) =>
+  (Emitter m a -> m ()) ->
+  Emitter m a ->
+  Emitter m a
+postmapE f e = Emitter $ do
   r <- emit e
   f e
   pure r
 
--- | add a post-emit monadic action
-addM :: (Monad m) =>
-    (a -> m ())
-    -> Emitter m a
-    -> Emitter m a
-addM f e = Emitter $ do
+-- | add a post-emit monadic action on the emitted value (if there was any)
+postmapM ::
+  (Monad m) =>
+  (a -> m ()) ->
+  Emitter m a ->
+  Emitter m a
+postmapM f e = Emitter $ do
   r <- emit e
   case r of
     Nothing -> pure Nothing
@@ -166,8 +155,8 @@ addM f e = Emitter $ do
       f r'
       pure (Just r')
 
--- | turn a list into an emitter
-toListE :: (MonadConc m) => Emitter m a -> m [a]
+-- | turn an emitter into a list
+toListE :: (Monad m) => Emitter m a -> m [a]
 toListE e = go [] e
   where
     go xs e' = do
@@ -176,21 +165,23 @@ toListE e = go [] e
         Nothing -> pure (reverse xs)
         Just x' -> go (x' : xs) e'
 
-fromListES :: (Monad m) => Emitter (StateT [a] m) a
-fromListES = Emitter $ do
+-- | emit from a StateT list
+--
+-- This compiles but is an infinite "a" emitter:
+--
+-- let e1 = hoist (flip evalStateT ["a", "b"::Text]) stateE :: Emitter IO Text
+stateE :: (Monad m) => Emitter (StateT [a] m) a
+stateE = Emitter $ do
   xs' <- get
   case xs' of
     [] -> pure Nothing
-    (x:xs'') -> do
+    (x : xs'') -> do
       put xs''
       pure $ Just x
 
-fromListE' :: (Monad m) => [a] -> (Emitter (StateT [a] m) a -> StateT [a] m r) -> m [a]
-fromListE' xs eaction = flip execStateT xs (eaction fromListES)
-
 -- | convert a list emitter to a Stateful element emitter
 unlistE :: (Monad m) => Emitter m [a] -> Emitter (StateT [a] m) a
-unlistE es = emap unlistS (hoist lift es)
+unlistE es = mapE unlistS (hoist lift es)
   where
     unlistS xs = do
       rs <- get
