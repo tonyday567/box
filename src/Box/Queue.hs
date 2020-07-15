@@ -30,8 +30,8 @@ where
 
 import Box.Box
 import Box.Committer
-import Box.Emitter
 import Box.Cont
+import Box.Emitter
 import Control.Concurrent.Classy.Async as C
 import Control.Concurrent.Classy.STM as C
 import Control.Monad.Catch as C
@@ -205,4 +205,3 @@ fuseActions abm bam = do
   (Box ca ea, _) <- toBoxM Unbounded
   (Box cb eb, _) <- toBoxM Unbounded
   concurrentlyRight (abm (Box ca eb)) (bam (Box cb ea))
-

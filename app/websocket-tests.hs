@@ -1,12 +1,12 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE NoImplicitPrelude #-}
 {-# OPTIONS_GHC -Wall #-}
 {-# OPTIONS_GHC -Wno-unused-do-bind #-}
 
@@ -19,13 +19,13 @@ Models a websocket connection
 module Main where
 
 import Box
-import Control.Lens hiding (Wrapped, Unwrapped)
+import qualified Control.Concurrent.Classy.Async as C
+import Control.Lens hiding (Unwrapped, Wrapped)
+import Control.Monad.Catch
+import Control.Monad.Conc.Class as C
 import Data.Generics.Labels ()
 import qualified Network.WebSockets as WS
 import NumHask.Prelude hiding (STM, bracket)
-import Control.Monad.Conc.Class as C
-import Control.Monad.Catch
-import qualified Control.Concurrent.Classy.Async as C
 import Options.Generic
 
 data ConfigSocket
@@ -47,12 +47,13 @@ server c app = liftIO $ WS.runServer (unpack $ c ^. #host) (c ^. #port) app
 
 con :: (MonadMask m, MonadIO m) => WS.PendingConnection -> Cont m WS.Connection
 con p = Cont $ \action ->
-    bracket
-      (liftIO $ WS.acceptRequest p)
-      (\conn -> liftIO $ WS.sendClose conn ("Bye from con!" :: Text))
-      action
+  bracket
+    (liftIO $ WS.acceptRequest p)
+    (\conn -> liftIO $ WS.sendClose conn ("Bye from con!" :: Text))
+    action
 
-clientApp :: (MonadIO m, MonadConc m) =>
+clientApp ::
+  (MonadIO m, MonadConc m) =>
   Box m (Either Text Text) Text ->
   WS.Connection ->
   m ()
@@ -66,11 +67,12 @@ serverApp ::
   WS.PendingConnection ->
   IO ()
 serverApp p =
-  with (con p)
-  (responder
-   (\x -> bool (Right $ "echo:" <> x) (Left "quit") (x=="q"))
-   mempty
-  )
+  with
+    (con p)
+    ( responder
+        (\x -> bool (Right $ "echo:" <> x) (Left "quit") (x == "q"))
+        mempty
+    )
 
 serverIO :: IO ()
 serverIO = server defaultConfigSocket serverApp
@@ -78,7 +80,7 @@ serverIO = server defaultConfigSocket serverApp
 clientIO :: IO ()
 clientIO =
   (client defaultConfigSocket . clientApp)
-  (Box (contramap show toStdout) fromStdin)
+    (Box (contramap show toStdout) fromStdin)
 
 data SocketType = Client | Responder | TestRun deriving (Eq, Read, Show, Generic)
 
@@ -107,7 +109,8 @@ main = do
 
 -- | default websocket receiver
 -- Lefts are info/debug
-receiver :: (MonadIO m) =>
+receiver ::
+  (MonadIO m) =>
   Committer m (Either Text Text) ->
   WS.Connection ->
   m Bool
@@ -145,7 +148,8 @@ sender (Box c e) conn = forever $ do
 
 -- | a receiver that responds based on received Text.
 -- lefts are quit signals. Rights are response text.
-responder :: (MonadIO m) =>
+responder ::
+  (MonadIO m) =>
   (Text -> Either Text Text) ->
   Committer m Text ->
   WS.Connection ->
@@ -184,19 +188,22 @@ cancelQ e = do
 -- | test of clientApp via a cRef committer and a canned list of Text
 tClient :: [Text] -> IO [Either Text Text]
 tClient xs = do
-  (c,r) <- cRef
-  client defaultConfigSocket
-    (\conn ->
-       (\b -> clientApp b conn) <$.>
-       (Box <$>
-        pure c <*>
-        fromListE (xs <> ["q"])))
+  (c, r) <- cRef
+  client
+    defaultConfigSocket
+    ( \conn ->
+        (\b -> clientApp b conn)
+          <$.> ( Box
+                   <$> pure c
+                   <*> fromListE (xs <> ["q"])
+               )
+    )
   r
 
 tClientIO :: [Text] -> IO ()
 tClientIO xs =
-  (client defaultConfigSocket . clientApp) <$.>
-  (Box (contramap show toStdout) <$> (fromListE (xs <> ["q"])))
+  (client defaultConfigSocket . clientApp)
+    <$.> (Box (contramap show toStdout) <$> (fromListE (xs <> ["q"])))
 
 -- | main test run of client-server functionality
 -- the code starts a server in a thread, starts the client in the main thread, and cancels the server on completion.
@@ -205,6 +212,6 @@ tClientIO xs =
 testRun :: IO [Either Text Text]
 testRun = do
   a <- async (server defaultConfigSocket serverApp)
-  r <- tClient (show <$> [1..3::Int])
+  r <- tClient (show <$> [1 .. 3 :: Int])
   cancel a
   pure r

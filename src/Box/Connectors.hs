@@ -58,7 +58,6 @@ fromList_ xs c = flip evalStateT xs $ glue (hoist lift c) stateE
 -- TODO: check isomorphism
 --
 -- > toList_ == toListE
---
 toList_ :: (Monad m) => Emitter m a -> m [a]
 toList_ e = reverse <$> flip execStateT [] (glue stateC (hoist lift e))
 
@@ -66,10 +65,9 @@ toList_ e = reverse <$> flip execStateT [] (glue stateC (hoist lift e))
 --
 -- The pure nature of this computation is highly useful for testing,
 -- especially where parts of the box under investigation has non-deterministic attributes.
---
-fromToList_ :: (Monad m) => [a] -> (Box (StateT ([b],[a]) m) b a -> StateT ([b],[a]) m r) -> m [b]
+fromToList_ :: (Monad m) => [a] -> (Box (StateT ([b], [a]) m) b a -> StateT ([b], [a]) m r) -> m [b]
 fromToList_ xs f = do
-  (res, _) <- flip execStateT ([],xs) $ f (Box (hoist (zoom _1) stateC) (hoist (zoom _2) stateE))
+  (res, _) <- flip execStateT ([], xs) $ f (Box (hoist (zoom _1) stateC) (hoist (zoom _2) stateE))
   pure (reverse res)
 
 -- | hook a committer action to a queue, creating an emitter continuation
@@ -128,10 +126,10 @@ concurrentE ::
   Cont m (Emitter m a)
 concurrentE e e' =
   Cont $ \eaction ->
-      fst
-        <$> C.concurrently
-          (queueE (`glue` e) eaction)
-          (queueE (`glue` e') eaction)
+    fst
+      <$> C.concurrently
+        (queueE (`glue` e) eaction)
+        (queueE (`glue` e') eaction)
 
 -- | run two committers concurrently
 concurrentC :: (MonadConc m) => Committer m a -> Committer m a -> Cont m (Committer m a)
@@ -144,10 +142,11 @@ eitherC ::
   Cont m (Either (Committer m a) (Committer m a))
 eitherC cl cr =
   Cont $
-  \kk ->
-    fst <$> C.concurrently
-    (queueC (kk . Left) (glue cl))
-    (queueC (kk . Right) (glue cr))
+    \kk ->
+      fst
+        <$> C.concurrently
+          (queueC (kk . Left) (glue cl))
+          (queueC (kk . Right) (glue cr))
 
 mergeC :: Either (Committer m a) (Committer m a) -> Committer m a
 mergeC ec =

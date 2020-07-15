@@ -74,6 +74,7 @@ showStdout :: Show a => Committer IO a
 showStdout = contramap show toStdout
 
 -- * handle operations
+
 -- | Emits lines of Text from a handle.
 handleE :: Handle -> Emitter IO Text
 handleE h = Emitter $ do
