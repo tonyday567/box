@@ -5,42 +5,16 @@
 
 packages:
 - completed:
-    name: numhask-space
-    version: 0.5.0
-    git: https://github.com/tonyday567/numhask-space
-    pantry-tree:
-      size: 1074
-      sha256: a4c39e1a6edb00b40feb16077610cd306e1b48f58a277cc333b98fbf1a127f53
-    commit: 6525f5096525196fe367dabdfe596a7bd0c0aa6c
-  original:
-    git: https://github.com/tonyday567/numhask-space
-    commit: 6525f5096525196fe367dabdfe596a7bd0c0aa6c
-- completed:
-    subdir: numhask-prelude
-    name: numhask-prelude
-    version: 0.6.0
-    git: https://github.com/tonyday567/numhask
-    pantry-tree:
-      size: 338
-      sha256: c4a8b69caf234c1a0b3374d1b740b9dd60317d01e5ee7b34cdbaad32639a905c
-    commit: 37ee8dced120f60a511baa6bb6c7ac382b1e8827
-  original:
-    subdir: numhask-prelude
-    git: https://github.com/tonyday567/numhask
-    commit: 37ee8dced120f60a511baa6bb6c7ac382b1e8827
-- completed:
-    subdir: numhask
     name: numhask
     version: 0.6.0
     git: https://github.com/tonyday567/numhask
     pantry-tree:
-      size: 1668
-      sha256: b8cefa8ebdadb9f9d15dcc5151b1e5d85d5b81318a3b595ed805e6a7e7dc1c61
-    commit: 37ee8dced120f60a511baa6bb6c7ac382b1e8827
+      size: 2003
+      sha256: e87197f2a03d212b2b0958e16368827795d2f4cfd06890a9023834e9fc171f16
+    commit: 1dcb82dc7e503605bac193c64fe82c1b35ca9fcd
   original:
-    subdir: numhask
     git: https://github.com/tonyday567/numhask
-    commit: 37ee8dced120f60a511baa6bb6c7ac382b1e8827
+    commit: 1dcb82dc7e503605bac193c64fe82c1b35ca9fcd
 snapshots:
 - completed:
     size: 503181
