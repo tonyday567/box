@@ -5,16 +5,12 @@
 
 packages:
 - completed:
-    name: numhask
-    version: 0.6.0
-    git: https://github.com/tonyday567/numhask
+    hackage: numhask-0.6.0@sha256:f272b77dde4b598dd3af2fd12a2bf7abb3c296295ebc3fafefa628ee6726be39,1621
     pantry-tree:
-      size: 2003
-      sha256: e87197f2a03d212b2b0958e16368827795d2f4cfd06890a9023834e9fc171f16
-    commit: 1dcb82dc7e503605bac193c64fe82c1b35ca9fcd
+      size: 1656
+      sha256: 9f6c30b5217b3e8b32cec46ae8b2b2831a84949b4be3c714fe571077cf4a6542
   original:
-    git: https://github.com/tonyday567/numhask
-    commit: 1dcb82dc7e503605bac193c64fe82c1b35ca9fcd
+    hackage: numhask-0.6.0
 snapshots:
 - completed:
     size: 503181

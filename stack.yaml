@@ -4,6 +4,5 @@ packages:
   - .
 
 extra-deps:
-  - git: https://github.com/tonyday567/numhask
-    commit: 1dcb82dc7e503605bac193c64fe82c1b35ca9fcd
+  - numhask-0.6.0
 
