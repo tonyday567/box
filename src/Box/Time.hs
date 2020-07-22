@@ -59,45 +59,45 @@ data Stamped a
   deriving (Eq, Show, Read)
 
 -- | Add the current time
-stampNow :: (MonadConc m, MonadIO m) => a -> m (Stamped a)
+stampNow :: (MonadConc m, MonadIO m) => a -> m (LocalTime, a)
 stampNow a = do
   t <- liftIO getCurrentTime
-  pure $ Stamped t a
+  pure $ (utcToLocalTime utc t, a)
 
 -- | adding a time stamp
 stampE ::
   (MonadConc m, MonadIO m) =>
   Emitter m a ->
-  Emitter m (Stamped a)
-stampE e = mapE (fmap Just . stampNow) e
+  Emitter m ((LocalTime, a))
+stampE e = mapE (\x -> Just <$> stampNow x) e
 
 -- | wait until Stamped time before emitting
 emitOn ::
-  Emitter IO (Stamped a) ->
+  Emitter IO (LocalTime, a) ->
   Emitter IO a
 emitOn e =
   mapE
-    ( \(Stamped u a) -> do
-        sleepUntil u
+    ( \((l, a)) -> do
+        sleepUntil (localTimeToUTC utc l)
         pure $ Just a
     )
     e
 
 -- | reset the emitter stamps to by in sync with the current time and adjust the speed
 -- >>> let e1 = fromListE (zipWith (\x a -> Stamped (addUTCTime (fromDouble x) t) a) [0..5] [0..5])
-playback :: Double -> Emitter IO (Stamped a) -> IO (Emitter IO (Stamped a))
+playback :: Double -> Emitter IO (LocalTime, a) -> IO (Emitter IO (LocalTime, a))
 playback speed e = do
   r <- emit e
   case r of
     Nothing -> pure mempty
-    Just (Stamped u0 _) -> do
+    Just (l0, _) -> do
       t0 <- getCurrentTime
-      let ua = diffUTCTime t0 u0
-      let delta u = addUTCTime ua $ addUTCTime (fromDouble ((toDouble $ diffUTCTime u u0) * speed)) u0
-      pure (mapE (\(Stamped u a) -> pure (Just (Stamped (delta u) a))) e)
+      let ua = diffLocalTime (utcToLocalTime utc t0) l0
+      let delta u = addLocalTime ua $ addLocalTime (fromDouble ((toDouble $ diffLocalTime u l0) * speed)) l0
+      pure (mapE (\((l, a)) -> pure (Just ((delta l), a))) e)
 
 -- | simulate a delay from a (Stamped a) Emitter relative to the first timestamp
-simulate :: Double -> Emitter IO (Stamped a) -> Cont IO (Emitter IO a)
+simulate :: Double -> Emitter IO (LocalTime, a) -> Cont IO (Emitter IO a)
 simulate speed e = Cont $ \eaction -> do
   e' <- playback speed e
   eaction (emitOn e')

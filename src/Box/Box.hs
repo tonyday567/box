@@ -13,6 +13,7 @@ module Box.Box
     bmap,
     hoistb,
     glue,
+    glue_,
     glueb,
     fuse,
     dotb,
@@ -73,6 +74,22 @@ glue c e = go
       a <- emit e
       c' <- maybe (pure False) (commit c) a
       when c' go
+
+-- | Connect an emitter directly to a committer of the same type.
+--
+-- The monadic action returns if the committer returns False.
+glue_ :: (Monad m) => Committer m a -> Emitter m a -> m ()
+glue_ c e = go
+  where
+    go = do
+      a <- emit e
+      case a of
+        Nothing -> go
+        Just a' -> do
+          b <- commit c a'
+          case b of
+            True -> go
+            False -> pure ()
 
 -- | Short-circuit a homophonuos box.
 glueb :: (Monad m) => Box m a a -> m ()
