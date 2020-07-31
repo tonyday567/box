@@ -17,6 +17,8 @@ module Box.Box
     glueb,
     fuse,
     dotb,
+    Divap(..),
+    DecAlt(..),
   )
 where
 
@@ -25,6 +27,7 @@ import Box.Emitter
 import Data.Functor.Contravariant
 import Data.Profunctor
 import NumHask.Prelude
+import Data.Functor.Contravariant.Divisible
 
 -- | A Box is a product of a Committer m and an Emitter. Think of a box with an incoming wire and an outgoing wire. Now notice that the abstraction is reversable: are you looking at two wires from "inside a box"; a blind erlang grunt communicating with the outside world via the two thin wires, or are you looking from "outside the box"; interacting with a black box object. Either way, it's a box.
 -- And either way, the committer is contravariant and the emitter covariant so it forms a profunctor.
@@ -100,3 +103,26 @@ glueb (Box c e) = glue c e
 -- > fuse (pure . pure) == glueb == etc () (Transducer id)
 fuse :: (Monad m) => (a -> m (Maybe b)) -> Box m b a -> m ()
 fuse f (Box c e) = glue c (mapE f e)
+
+-- combines 'divide'/'conquer' and 'liftA2'/'pure'
+class Divap p where
+    divap :: (a -> (b, c)) -> ((d, e) -> f) -> p b d -> p c e -> p a f
+    conpur :: a -> p b a
+
+class Profunctor p => DecAlt p where
+    choice :: (a -> Either b c) -> (Either d e -> f) -> p b d -> p c e -> p a f
+    loss :: p Void b
+
+instance (Applicative m) => Divap (Box m) where
+  divap split merge (Box lc le) (Box rc re) = Box (divide split lc rc) (liftA2 (curry merge) le re)
+
+  conpur a = Box conquer (pure a)
+
+instance (Monad m, Alternative m) => DecAlt (Box m) where
+  choice split merge (Box lc le) (Box rc re) =
+    Box (choose split lc rc) (fmap merge $ (fmap Left le) <|> (fmap Right re))
+  loss = Box (lose absurd) empty
+
+
+
+
