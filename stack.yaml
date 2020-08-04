@@ -4,5 +4,5 @@ packages:
   - .
 
 extra-deps:
-  - numhask-0.6.0
+  - numhask-0.6.0.2
 
