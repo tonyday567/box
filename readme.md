@@ -37,7 +37,7 @@ The key to understanding this library is to resist having to choose a single fra
 
 A `Box m c e` unifies the functorial wrapper `m` of the emitter and committer, which is what really makes it a functional box. Boxes can often be hooked together at this level for useful efficiencies.
 
-A Box is also a [profunctor](https://bartoszmilewski.com/2019/03/27/promonads-arrows-and-einstein-notation-for-profunctors/) and, to quote Bartos, a profunctor can be used to glue together two categories. A Box.Transducer, a stateful stream converter with a Category instance, can be used to connect up a box to create a sound compositional building block for arbitrarily complex problems.
+A Box is also a [profunctor](https://bartoszmilewski.com/2019/03/27/promonads-arrows-and-einstein-notation-for-profunctors/) and, to quote Bartos, a profunctor can be used to glue together two categories.
 
 Like other paradigms, boxes can be not fun places to get stuck in.  Much of the library are not, in fact, emitters and committers but emitter, committer and box continuations. If you gave me something that takes a box and does something, then I'll give you a something is a natural piece of logic within the library context, and so large parts of the functionality are [continuation-parsing style](https://ro-che.info/articles/2019-06-07-why-use-contt).
 

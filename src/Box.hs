@@ -26,7 +26,6 @@ module Box
     module Box.IO,
     module Box.Queue,
     module Box.Time,
-    module Box.Transducer,
   )
 where
 
@@ -38,7 +37,6 @@ import Box.Emitter
 import Box.IO
 import Box.Queue
 import Box.Time
-import Box.Transducer
 
 {- $setup
 >>> :set -XOverloadedStrings
@@ -49,7 +47,6 @@ import Box.Transducer
 >>> import qualified Prelude as P
 >>> import Data.Functor.Contravariant
 >>> import Box
->>> import qualified Streaming.Prelude as S
 >>> import Control.Monad.Conc.Class as C
 >>> import Control.Lens
 -}
@@ -72,18 +69,15 @@ box' :: Cont IO (Box IO Text Text)
 
 {- $boxes
 
-The basic ways of connecting up a box are all related as follows:
+The two basic ways of connecting up a box are related as follows:
 
 > glue c e == glueb (Box c e)
-> glueb == fuse (pure . pure) == etc () (Transducer id)
+> glueb == fuse (pure . pure)
 
 >>> fromToList_ [1..3] glueb
 [1,2,3]
 
 >>> fromToList_ [1..3] (fuse (pure . pure))
-[1,2,3]
-
->>> fromToList_ [1..3] (etc () (Transducer id))
 [1,2,3]
 
 1. glue: direct fusion of committer and emitter
@@ -122,23 +116,6 @@ Using the box version of glue:
 >>> fuse (\a -> bool (pure $ Just $ "echo: " <> a) (pure Nothing) (a==("2"::Text))) <$.> box'
 echo: 1
 echo: 3
-
-3. Transduction
-
-For complicated branching and layering, the library provides an API into the streaming library, via 'etc'.
-
->>> :t etc
-etc :: Monad m => s -> Transducer s a b -> Box m b a -> m s
-
-A 'Transducer' is a pure, stateful stream to stream transformation that is highly composable, abstraction leakage-proof and has a category instance.
-
-'etc' stands for emit -> transduce -> commit, and can be considered a distant relative of the model-view-controller abstraction.
-
->>> let transducer' = Transducer $ \s -> s & S.takeWhile (/="3") & S.chain (const (modify (+1))) & S.map ("echo: " <>)
->>> etc 0 transducer' <$.> box'
-echo: 1
-echo: 2
-2
 
 -}
 
@@ -252,6 +229,14 @@ Two infinite ends will tend to run infinitely.
 ...
 💁
 ∞
+
+Use glueN to create a finite computation.
+
+>>> glueN 4 <$> pure (contramap show toStdout) <*.> fromListE [1..]
+1
+2
+3
+4
 
 -}
 

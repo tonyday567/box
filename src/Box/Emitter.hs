@@ -23,6 +23,9 @@ module Box.Emitter
     toListE,
     unlistE,
     stateE,
+    takeE,
+    takeUntilE,
+    filterE,
   )
 where
 
@@ -190,3 +193,37 @@ unlistE es = mapE unlistS (hoist lift es)
         (x : xs') -> do
           put xs'
           pure (Just x)
+
+takeE :: (Monad m) => Int -> Emitter m a -> Emitter (StateT Int m) a
+takeE n e = Emitter $ do
+  x <- emit (hoist lift e)
+  case x of
+    Nothing -> pure Nothing
+    Just x' -> do
+      n' <- get
+      bool (pure Nothing) (emit' n') (n' < n)
+        where
+          emit' n' = do
+            put (n'+1)
+            pure $ Just x'
+
+-- | Take from an emitter until predicate
+takeUntilE :: (Monad m) => (a -> Bool) -> Emitter m a -> Emitter m a
+takeUntilE p e = Emitter $ do
+  x <- emit e
+  case x of
+    Nothing -> pure Nothing
+    Just x' ->
+      bool (pure (Just x')) (pure Nothing) (p x')
+
+-- | Filter emissions according to a predicate.
+filterE :: (Monad m) => (a -> Bool) -> Emitter m a -> Emitter m a
+filterE p e = Emitter go
+  where
+    go = do
+      x <- emit e
+      case x of
+        Nothing -> pure Nothing
+        Just x' ->
+          bool go (pure (Just x')) (p x')
+

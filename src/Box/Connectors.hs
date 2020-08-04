@@ -22,6 +22,7 @@ module Box.Connectors
     queueEmitter,
     concurrentE,
     concurrentC,
+    glueN,
   )
 where
 
@@ -60,6 +61,16 @@ fromList_ xs c = flip evalStateT xs $ glue (hoist lift c) stateE
 -- > toList_ == toListE
 toList_ :: (Monad m) => Emitter m a -> m [a]
 toList_ e = reverse <$> flip execStateT [] (glue stateC (hoist lift e))
+
+-- | Glues a committer and emitter, taking n emits
+--
+-- >>> glueN 4 <$> pure (contramap show toStdout) <*.> fromListE [1..]
+-- 1
+-- 2
+-- 3
+-- 4
+glueN :: Monad m => Int -> Committer m a -> Emitter m a -> m ()
+glueN n c e = flip evalStateT 0 $ glue (hoist lift c) (takeE n e)
 
 -- | take a list, emit it through a box, and output the committed result.
 --

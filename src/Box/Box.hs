@@ -100,7 +100,7 @@ glueb (Box c e) = glue c e
 
 -- | fuse a box
 --
--- > fuse (pure . pure) == glueb == etc () (Transducer id)
+-- > fuse (pure . pure) == glueb 
 fuse :: (Monad m) => (a -> m (Maybe b)) -> Box m b a -> m ()
 fuse f (Box c e) = glue c (mapE f e)
 

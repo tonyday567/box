@@ -21,7 +21,6 @@ import Box
 import Control.Lens
 import Control.Monad.Conc.Class as C
 import NumHask.Prelude hiding (STM)
-import qualified Streaming.Prelude as S
 import System.Random
 import Test.DejaFu hiding (get)
 import Test.DejaFu.Types
@@ -64,10 +63,6 @@ tPureState :: Int -> [Int]
 tPureState n =
   runIdentity $ fmap (reverse . fst) $ flip execStateT ([], [1 .. n]) $ glue (hoist (zoom _1) stateC) (hoist (zoom _2) stateE)
 
--- tPureBoxF :: (Monad m) => (Box m Int Int -> m ()) -> Int -> m [Int]
--- > tPureBoxF (etc' () (Transducer id))
--- > tPureBoxF (fuse (pure . pure))
--- > tPureBoxF (\(Box c e) -> glue c e)
 tPureBoxF f n =
   fmap (reverse . fst) $ flip execStateT ([], [1 .. n]) $ f (Box (hoist (zoom _1) stateC) (hoist (zoom _2) stateE))
 
@@ -98,9 +93,7 @@ main = do
             tToList_ n,
             tFromList_' n,
             pure (tPureState n),
-            tPureBoxF (etc () (Transducer id)) n,
             tPureBoxF (fuse (pure . pure)) n,
             tPureBoxF (\(Box c e) -> glue c e) n,
-            (\(a, b) -> a <> b) <$> (tForkEmit <$.> (fromListE [1 .. n])),
-            (\(a, b) -> a <> b) <$> (tForkEmit <$.> (toEmitter (S.take 4 $ S.each [1 ..])))
+            (\(a, b) -> a <> b) <$> (tForkEmit <$.> (fromListE [1 .. n]))
           ]
