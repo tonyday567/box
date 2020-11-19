@@ -2,7 +2,9 @@ resolver: nightly-2020-06-25
 
 packages:
   - .
+  - ../numhask
+  - ../numhask-space
 
 extra-deps:
-  - numhask-0.6.0.2
+  # - numhask-0.6.0.2
 

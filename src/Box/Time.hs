@@ -24,31 +24,17 @@ import Box.Emitter
 import Control.Monad.Conc.Class as C
 import Data.Time
 import NumHask.Prelude hiding (STM, atomically)
-import qualified Prelude as P
+import NumHask.Space.Time
 
 -- | sleep for x seconds
 sleep :: (MonadConc m) => Double -> m ()
-sleep x = C.threadDelay (fromIntegral (floor $ x * 1e6 :: Integer))
+sleep x = C.threadDelay (floor $ x * 1e6)
 
 -- | sleep until a certain time (in the future)
 sleepUntil :: UTCTime -> IO ()
 sleepUntil u = do
   t0 <- getCurrentTime
-  sleep (toDouble $ diffUTCTime u t0)
-
-toDouble :: NominalDiffTime -> Double
-toDouble t =
-  (/ 1000000000000.0) $
-    fromIntegral (P.floor $ t P.* 1000000000000 :: Integer)
-
-fromDouble :: Double -> NominalDiffTime
-fromDouble x =
-  let d0 = ModifiedJulianDay 0
-      days = floor (x / toDouble nominalDay)
-      secs = x - fromIntegral days * toDouble nominalDay
-      t0 = UTCTime d0 (picosecondsToDiffTime 0)
-      t1 = UTCTime (addDays days d0) (picosecondsToDiffTime $ floor (secs / 1.0e-12))
-   in diffUTCTime t1 t0
+  sleep (fromNominalDiffTime $ diffUTCTime u t0)
 
 -- | A value with a UTCTime annotation.
 data Stamped a
@@ -93,7 +79,7 @@ playback speed e = do
     Just (l0, _) -> do
       t0 <- getCurrentTime
       let ua = diffLocalTime (utcToLocalTime utc t0) l0
-      let delta u = addLocalTime ua $ addLocalTime (fromDouble ((toDouble $ diffLocalTime u l0) * speed)) l0
+      let delta u = addLocalTime ua $ addLocalTime (toNominalDiffTime ((fromNominalDiffTime $ diffLocalTime u l0) * speed)) l0
       pure (mapE (\((l, a)) -> pure (Just ((delta l), a))) e)
 
 -- | simulate a delay from a (Stamped a) Emitter relative to the first timestamp
