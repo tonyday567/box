@@ -114,7 +114,7 @@ class Profunctor p => DecAlt p where
     loss :: p Void b
 
 instance (Applicative m) => Divap (Box m) where
-  divap split merge (Box lc le) (Box rc re) = Box (divide split lc rc) (liftA2 (curry merge) le re)
+  divap split' merge (Box lc le) (Box rc re) = Box (divide split' lc rc) (liftA2 (curry merge) le re)
 
   conpur a = Box conquer (pure a)
 

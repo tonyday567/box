@@ -21,7 +21,6 @@ import Box
 import Control.Lens
 import Control.Monad.Conc.Class as C
 import NumHask.Prelude hiding (STM)
-import System.Random
 import Test.DejaFu hiding (get)
 import Test.DejaFu.Types
 
