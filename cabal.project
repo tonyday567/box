@@ -1,0 +1,5 @@
+packages: box.cabal
+
+keep-going: true
+
+allow-newer: websockets:random
