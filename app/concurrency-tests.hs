@@ -1,14 +1,11 @@
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RebindableSyntax #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -Wall #-}
 {-# OPTIONS_GHC -fno-warn-missing-signatures #-}
@@ -20,6 +17,7 @@ module Main where
 import Box
 import Control.Lens
 import Control.Monad.Conc.Class as C
+import qualified Data.Sequence as Seq
 import NumHask.Prelude hiding (STM)
 import Test.DejaFu hiding (get)
 import Test.DejaFu.Types
@@ -30,9 +28,6 @@ tERef e = do
   glue c e
   res
 
-tEState :: (Monad m) => Emitter m a -> m [a]
-tEState e = flip execStateT [] $ glue stateC (hoist lift e)
-
 tToListE :: (MonadConc m) => Int -> m [Int]
 tToListE n =
   toListE <$.> fromListE [1 .. n]
@@ -41,7 +36,7 @@ tFromListE :: (MonadConc m) => Int -> m [Int]
 tFromListE n = do
   (c, res) <- cRef
   let e = fromListE [0 .. (n - 1)]
-  fuse (pure . pure) <$.> (Box <$> pure c <*> e)
+  fuse (pure . pure) <$.> (Box c <$> e)
   res
 
 tToList_ :: (MonadConc m) => Int -> m [Int]
@@ -56,14 +51,17 @@ tFromList_ n = do
   res
 
 tFromList_' :: (MonadConc m) => Int -> m [Int]
-tFromList_' n = reverse <$> (flip execStateT [] $ fromList_ [1 .. n] stateC)
+tFromList_' n = toList <$> execStateT (fromList_ [1 .. n] stateC) Seq.empty
 
 tPureState :: Int -> [Int]
 tPureState n =
-  runIdentity $ fmap (reverse . fst) $ flip execStateT ([], [1 .. n]) $ glue (hoist (zoom _1) stateC) (hoist (zoom _2) stateE)
+  toList $
+    runIdentity $
+      fmap fst $
+        flip execStateT (Seq.empty, Seq.fromList [1 .. n]) $
+          glue (hoist (zoom _1) stateC) (hoist (zoom _2) stateE)
 
-tPureBoxF f n =
-  fmap (reverse . fst) $ flip execStateT ([], [1 .. n]) $ f (Box (hoist (zoom _1) stateC) (hoist (zoom _2) stateE))
+tPureBoxF f n = fromToList_ [1 .. n] f
 
 -- tForkEmit <$.> (fromListE [1..4])
 -- tForkEmit <$.> (toEmitter (S.take 4 $ S.each [1..]))
@@ -80,7 +78,7 @@ t ::
   (MonadIO n, Eq b, Show b, MonadDejaFu n) =>
   ConcT n b ->
   n Bool
-t c = dejafuWay (randomly (mkStdGen 42) 1000) defaultMemType "" alwaysSame c
+t = dejafuWay (randomly (mkStdGen 42) 1000) defaultMemType "" alwaysSame
 
 main :: IO ()
 main = do
@@ -94,5 +92,5 @@ main = do
             pure (tPureState n),
             tPureBoxF (fuse (pure . pure)) n,
             tPureBoxF (\(Box c e) -> glue c e) n,
-            (\(a, b) -> a <> b) <$> (tForkEmit <$.> (fromListE [1 .. n]))
+            uncurry (<>) <$> (tForkEmit <$.> fromListE [1 .. n])
           ]

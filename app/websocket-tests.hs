@@ -28,12 +28,11 @@ import qualified Network.WebSockets as WS
 import NumHask.Prelude hiding (STM, bracket)
 import Options.Generic
 
-data ConfigSocket
-  = ConfigSocket
-      { host :: Text,
-        port :: Int,
-        path :: Text
-      }
+data ConfigSocket = ConfigSocket
+  { host :: !Text,
+    port :: !Int,
+    path :: !Text
+  }
   deriving (Show, Eq, Generic)
 
 defaultConfigSocket :: ConfigSocket
@@ -90,10 +89,9 @@ instance ParseRecord SocketType
 
 instance ParseFields SocketType
 
-data Opts w
-  = Opts
-      { apptype :: w ::: SocketType <?> "type of websocket app"
-      }
+newtype Opts w = Opts
+  { apptype :: w ::: SocketType <?> "type of websocket app"
+  }
   deriving (Generic)
 
 instance ParseRecord (Opts Wrapped)
@@ -164,7 +162,7 @@ responder f c conn = go
           liftIO $ WS.sendClose conn ("received close signal: responder closed." :: Text)
         WS.ControlMessage _ -> go
         WS.DataMessage _ _ _ msg' -> do
-          case (f $ WS.fromDataMessage msg') of
+          case f $ WS.fromDataMessage msg' of
             Left _ -> do
               commit c "responder: sender initiated close"
               liftIO $ WS.sendClose conn ("received close signal: responder closed." :: Text)
@@ -174,14 +172,14 @@ responder f c conn = go
               go
 
 q :: IO a -> IO (Either () a)
-q f = race (cancelQ fromStdin) f
+q = race (cancelQ fromStdin)
 
 cancelQ :: Emitter IO Text -> IO ()
 cancelQ e = do
   e' <- emit e
   case e' of
     Just "q" -> pure ()
-    _ -> do
+    _other -> do
       putStrLn ("nothing happens" :: Text)
       cancelQ e
 
@@ -192,10 +190,8 @@ tClient xs = do
   client
     defaultConfigSocket
     ( \conn ->
-        (\b -> clientApp b conn)
-          <$.> ( Box
-                   <$> pure c
-                   <*> fromListE (xs <> ["q"])
+        (`clientApp` conn)
+          <$.> ( Box c <$> fromListE (xs <> ["q"])
                )
     )
   r
@@ -203,7 +199,7 @@ tClient xs = do
 tClientIO :: [Text] -> IO ()
 tClientIO xs =
   (client defaultConfigSocket . clientApp)
-    <$.> (Box (contramap show toStdout) <$> (fromListE (xs <> ["q"])))
+    <$.> (Box (contramap show toStdout) <$> fromListE (xs <> ["q"]))
 
 -- | main test run of client-server functionality
 -- the code starts a server in a thread, starts the client in the main thread, and cancels the server on completion.

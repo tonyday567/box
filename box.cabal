@@ -1,6 +1,6 @@
 cabal-version:  2.4
 name:           box
-version:        0.6.2
+version:        0.6.3
 synopsis:       boxes
 description:    concurrent, effectful boxes
 category:       project
@@ -34,10 +34,6 @@ library
   hs-source-dirs:
     src
   default-extensions:
-    NegativeLiterals
-    NoImplicitPrelude
-    OverloadedStrings
-    UnicodeSyntax
   ghc-options:
     -Wall
     -Wcompat
@@ -45,11 +41,14 @@ library
     -Wincomplete-uni-patterns
     -Wredundant-constraints
     -funbox-strict-fields
+    -fwrite-ide-info
+    -hiedir=.hie
   build-depends:
     attoparsec >= 0.13,
     base >=4.7 && <5,
     comonad >= 5.0,
     concurrency >= 1.11,
+    containers >= 0.6 && < 0.7,
     contravariant >= 1.5,
     exceptions >= 0.10,
     lens >= 4.19,
@@ -71,6 +70,7 @@ executable concurrency-tests
     base >=4.7 && <5,
     box,
     concurrency >= 1.11,
+    containers >= 0.6 && < 0.7,
     dejafu >= 2.3,
     generic-lens >= 2.0,
     lens >= 4.19,
@@ -80,10 +80,6 @@ executable concurrency-tests
     transformers >= 0.5
   default-language: Haskell2010
   default-extensions:
-    NegativeLiterals
-    NoImplicitPrelude
-    OverloadedStrings
-    UnicodeSyntax
   ghc-options:
     -Wall
     -Wcompat
@@ -95,6 +91,8 @@ executable concurrency-tests
     -threaded
     -rtsopts
     -with-rtsopts=-N
+    -fwrite-ide-info
+    -hiedir=.hie
 executable websocket-tests
   main-is: websocket-tests.hs
   hs-source-dirs:
@@ -116,10 +114,6 @@ executable websocket-tests
     websockets >= 0.12
   default-language: Haskell2010
   default-extensions:
-    NegativeLiterals
-    NoImplicitPrelude
-    OverloadedStrings
-    UnicodeSyntax
   ghc-options:
     -Wall
     -Wcompat
@@ -127,6 +121,8 @@ executable websocket-tests
     -Wincomplete-uni-patterns
     -Wredundant-constraints
     -funbox-strict-fields
+    -fwrite-ide-info
+    -hiedir=.hie
 
 test-suite test
   type: exitcode-stdio-1.0
@@ -146,3 +142,5 @@ test-suite test
     -Wincomplete-record-updates
     -Wincomplete-uni-patterns
     -Wredundant-constraints
+    -fwrite-ide-info
+    -hiedir=.hie

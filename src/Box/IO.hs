@@ -3,9 +3,9 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RebindableSyntax #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# OPTIONS_GHC -Wall #-}
 {-# OPTIONS_GHC -fno-warn-type-defaults #-}
 
@@ -34,6 +34,7 @@ import Box.Emitter
 import qualified Control.Concurrent.Classy.IORef as C
 import Control.Lens hiding ((.>), (:>), (<|), (|>))
 import qualified Control.Monad.Conc.Class as C
+import qualified Data.Sequence as Seq
 import Data.Text.IO (hGetLine)
 import NumHask.Prelude hiding (STM)
 
@@ -101,14 +102,14 @@ fileWriteC fp = Cont $ \cio -> withFile fp WriteMode (cio . handleC)
 fileAppendC :: FilePath -> Cont IO (Committer IO Text)
 fileAppendC fp = Cont $ \cio -> withFile fp AppendMode (cio . handleC)
 
--- | commit to a list IORef
+-- | commit to an IORef
 cRef :: (C.MonadConc m) => m (Committer m a, m [a])
 cRef = do
-  ref <- C.newIORef []
+  ref <- C.newIORef Seq.empty
   let c = Committer $ \a -> do
-        C.modifyIORef ref (a :)
+        C.modifyIORef ref (Seq.:|> a)
         pure True
-  let res = reverse <$> C.readIORef ref
+  let res = toList <$> C.readIORef ref
   pure (c, res)
 
 -- | emit from a list IORef

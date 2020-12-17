@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RebindableSyntax #-}
 {-# OPTIONS_GHC -Wall #-}
 
 -- | A continuation type.
@@ -18,10 +19,9 @@ where
 import NumHask.Prelude hiding (STM, atomically)
 
 -- | A continuation similar to ` Control.Monad.ContT` but where the result type is swallowed by an existential
-newtype Cont m a
-  = Cont
-      { with :: forall r. (a -> m r) -> m r
-      }
+newtype Cont m a = Cont
+  { with :: forall r. (a -> m r) -> m r
+  }
 
 instance Functor (Cont m) where
   fmap f mx = Cont (\return_ -> mx `with` \x -> return_ (f x))
@@ -57,10 +57,9 @@ runCont :: Cont m (m r) -> m r
 runCont x = with x id
 
 -- | sometimes you have no choice but to void it up
-newtype Cont_ m a
-  = Cont_
-      { with_ :: (a -> m ()) -> m ()
-      }
+newtype Cont_ m a = Cont_
+  { with_ :: (a -> m ()) -> m ()
+  }
 
 instance Functor (Cont_ m) where
   fmap f mx = Cont_ (\return_ -> mx `with_` \x -> return_ (f x))

@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RebindableSyntax #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
@@ -37,37 +38,35 @@ sleepUntil u = do
   sleep (fromNominalDiffTime $ diffUTCTime u t0)
 
 -- | A value with a UTCTime annotation.
-data Stamped a
-  = Stamped
-      { stamp :: UTCTime,
-        value :: a
-      }
+data Stamped a = Stamped
+  { stamp :: !UTCTime,
+    value :: !a
+  }
   deriving (Eq, Show, Read)
 
 -- | Add the current time
 stampNow :: (MonadConc m, MonadIO m) => a -> m (LocalTime, a)
 stampNow a = do
   t <- liftIO getCurrentTime
-  pure $ (utcToLocalTime utc t, a)
+  pure (utcToLocalTime utc t, a)
 
 -- | adding a time stamp
 stampE ::
   (MonadConc m, MonadIO m) =>
   Emitter m a ->
-  Emitter m ((LocalTime, a))
-stampE e = mapE (\x -> Just <$> stampNow x) e
+  Emitter m (LocalTime, a)
+stampE = mapE (fmap Just . stampNow)
 
 -- | wait until Stamped time before emitting
 emitOn ::
   Emitter IO (LocalTime, a) ->
   Emitter IO a
-emitOn e =
+emitOn =
   mapE
-    ( \((l, a)) -> do
+    ( \(l, a) -> do
         sleepUntil (localTimeToUTC utc l)
         pure $ Just a
     )
-    e
 
 -- | reset the emitter stamps to by in sync with the current time and adjust the speed
 -- >>> let e1 = fromListE (zipWith (\x a -> Stamped (addUTCTime (fromDouble x) t) a) [0..5] [0..5])
@@ -79,8 +78,8 @@ playback speed e = do
     Just (l0, _) -> do
       t0 <- getCurrentTime
       let ua = diffLocalTime (utcToLocalTime utc t0) l0
-      let delta u = addLocalTime ua $ addLocalTime (toNominalDiffTime ((fromNominalDiffTime $ diffLocalTime u l0) * speed)) l0
-      pure (mapE (\((l, a)) -> pure (Just ((delta l), a))) e)
+      let delta u = addLocalTime ua $ addLocalTime (toNominalDiffTime (fromNominalDiffTime (diffLocalTime u l0) * speed)) l0
+      pure (mapE (\(l, a) -> pure (Just (delta l, a))) e)
 
 -- | simulate a delay from a (Stamped a) Emitter relative to the first timestamp
 simulate :: Double -> Emitter IO (LocalTime, a) -> Cont IO (Emitter IO a)

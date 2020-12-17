@@ -2,10 +2,10 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RebindableSyntax #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# OPTIONS_GHC -Wall #-}
 
 -- | `commit`
@@ -22,15 +22,15 @@ where
 
 import Data.Functor.Contravariant
 import Data.Functor.Contravariant.Divisible
+import qualified Data.Sequence as Seq
 import NumHask.Prelude
 
 -- | a Committer a "commits" values of type a. A Sink and a Consumer are some other metaphors for this.
 --
 -- A Committer absorbs the value being committed; the value disappears into the opaque thing that is a Committer from the pov of usage.
-newtype Committer m a
-  = Committer
-      { commit :: a -> m Bool
-      }
+newtype Committer m a = Committer
+  { commit :: a -> m Bool
+  }
 
 instance MFunctor Committer where
   hoist nat (Committer c) = Committer $ nat . c
@@ -98,13 +98,15 @@ postmapC f c = Committer $ \a -> do
   f c
   pure r
 
--- | commit to a StateT list
-stateC :: (Monad m) => Committer (StateT [a] m) a
+-- | commit to a StateT 'Seq'.
+--
+-- Seq is used because only a finite number of commits are expected and because snoc'ing is cool.
+stateC :: (Monad m) => Committer (StateT (Seq.Seq a) m) a
 stateC = Committer $ \a -> do
-  modify (a :)
+  modify (Seq.:|> a)
   pure True
 
 -- | list committer
 listC :: (Monad m) => Committer m a -> Committer m [a]
 listC c = Committer $ \as ->
-  any id <$> (sequence $ commit c <$> as)
+  or <$> sequence (commit c <$> as)

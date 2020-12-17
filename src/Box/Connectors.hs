@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RebindableSyntax #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -Wall #-}
@@ -34,6 +35,7 @@ import Box.Queue
 import Control.Concurrent.Classy.Async as C
 import Control.Lens
 import Control.Monad.Conc.Class (MonadConc)
+import qualified Data.Sequence as Seq
 import NumHask.Prelude hiding (STM, atomically)
 
 -- | Turn a list into an 'Emitter' continuation via a 'Queue'
@@ -52,7 +54,7 @@ eListC (e : es) c = do
 --
 -- FIXME: fromList_ combined with cRef is failing dejavu concurrency testing...
 fromList_ :: Monad m => [a] -> Committer m a -> m ()
-fromList_ xs c = flip evalStateT xs $ glue (hoist lift c) stateE
+fromList_ xs c = flip evalStateT (Seq.fromList xs) $ glue (hoist lift c) stateE
 
 -- | toList_ directly receives from an emitter
 --
@@ -60,7 +62,7 @@ fromList_ xs c = flip evalStateT xs $ glue (hoist lift c) stateE
 --
 -- > toList_ == toListE
 toList_ :: (Monad m) => Emitter m a -> m [a]
-toList_ e = reverse <$> flip execStateT [] (glue stateC (hoist lift e))
+toList_ e = toList <$> flip execStateT Seq.empty (glue stateC (hoist lift e))
 
 -- | Glues a committer and emitter, taking n emits
 --
@@ -76,10 +78,12 @@ glueN n c e = flip evalStateT 0 $ glue (hoist lift c) (takeE n e)
 --
 -- The pure nature of this computation is highly useful for testing,
 -- especially where parts of the box under investigation has non-deterministic attributes.
-fromToList_ :: (Monad m) => [a] -> (Box (StateT ([b], [a]) m) b a -> StateT ([b], [a]) m r) -> m [b]
+fromToList_ :: (Monad m) => [a] -> (Box (StateT (Seq.Seq b, Seq.Seq a) m) b a -> StateT (Seq.Seq b, Seq.Seq a) m r) -> m [b]
 fromToList_ xs f = do
-  (res, _) <- flip execStateT ([], xs) $ f (Box (hoist (zoom _1) stateC) (hoist (zoom _2) stateE))
-  pure (reverse res)
+  (res, _) <-
+    flip execStateT (Seq.empty, Seq.fromList xs) $
+      f (Box (hoist (zoom _1) stateC) (hoist (zoom _2) stateE))
+  pure $ toList res
 
 -- | hook a committer action to a queue, creating an emitter continuation
 emitQ :: (MonadConc m) => (Committer m a -> m r) -> Cont m (Emitter m a)
