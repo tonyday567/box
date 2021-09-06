@@ -23,10 +23,7 @@ where
 import Data.Functor.Contravariant
 import Data.Functor.Contravariant.Divisible
 import qualified Data.Sequence as Seq
-import Prelude
-import Control.Monad.Morph
-import Control.Monad.Trans.State.Lazy
-import Data.Void
+import NumHask.Prelude
 
 -- | a Committer a "commits" values of type a. A Sink and a Consumer are some other metaphors for this.
 --
@@ -37,9 +34,6 @@ newtype Committer m a = Committer
 
 instance MFunctor Committer where
   hoist nat (Committer c) = Committer $ nat . c
-
-instance HFunctor Committer where
-  hmap nat (Committer c) = Committer $ nat . c
 
 instance (Applicative m) => Semigroup (Committer m a) where
   (<>) i1 i2 = Committer (\a -> (||) <$> commit i1 a <*> commit i2 a)

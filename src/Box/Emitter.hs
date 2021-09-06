@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RebindableSyntax #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -30,86 +31,58 @@ where
 
 import qualified Data.Attoparsec.Text as A
 import qualified Data.Sequence as Seq
-import Prelude
-import Control.Monad.Morph
-import Control.Monad.Trans.State.Lazy
-import Control.Applicative
-import qualified Data.Text as Text
-import Data.Bool
-import Data.Foldable
-import Yaya.Functor
-import Data.Maybe
-import Data.Distributive
-import Data.Functor.Compose
-import Control.Monad.Trans.Maybe
-import Data.Maybe
+import NumHask.Prelude
 
 -- | an `Emitter` "emits" values of type a. A Source & a Producer (of a's) are the two other alternative but overloaded metaphors out there.
 --
 -- An Emitter "reaches into itself" for the value to emit, where itself is an opaque thing from the pov of usage.  An Emitter is named for its main action: it emits.
-newtype Emitter g a = Emitter
-  { emit :: Compose g Maybe a
+newtype Emitter m a = Emitter
+  { emit :: m (Maybe a)
   }
 
 instance MFunctor Emitter where
-  hoist nat (Emitter e) = Emitter (Compose $ nat (getCompose e))
+  hoist nat (Emitter e) = Emitter (nat e)
 
-instance HFunctor Emitter where
-  hmap nat (Emitter e) = Emitter (Compose $ nat (getCompose e))
+instance (Functor m) => Functor (Emitter m) where
+  fmap f m = Emitter (fmap (fmap f) (emit m))
 
-instance (Functor g) => Functor (Emitter g) where
-  fmap f m = undefined -- Emitter $ Compose (fmap (fmap f) (emit m))
+instance (Applicative m) => Applicative (Emitter m) where
+  pure r = Emitter (pure (pure r))
 
-instance (Applicative g) => Applicative (Emitter g) where
-  pure r = undefined -- Emitter (pure (pure r))
+  mf <*> mx = Emitter ((<*>) <$> emit mf <*> emit mx)
 
-  mf <*> mx = undefined -- Emitter ((<*>) <$> emit mf <*> emit mx)
+instance (Monad m) => Monad (Emitter m) where
+  return r = Emitter (return (return r))
 
-{-
-instance (Monad g) => Monad (Emitter g) where
-  return r = undefined -- Emitter (return (return r))
-
-  m >>= g =
+  m >>= f =
     Emitter $ do
       ma <- emit m
       case ma of
         Nothing -> return Nothing
-        Just a -> emit (g a)
+        Just a -> emit (f a)
 
--}
+instance (Monad m, Alternative m) => Alternative (Emitter m) where
+  empty = Emitter (pure Nothing)
 
-instance (Alternative g) => Alternative (Emitter g) where
-  empty = undefined -- Emitter (pure Nothing)
+  x <|> y =
+    Emitter $ do
+      (i, ma) <- fmap ((,) y) (emit x) <|> fmap ((,) x) (emit y)
+      case ma of
+        Nothing -> emit i
+        Just a -> pure (Just a)
 
-{-
-    Emitter $
-      let (i, ma) =
-            fmap ((,) y) (emit x) <|> fmap ((,) x) (emit y) in
-        _2 ma
+instance (Alternative m, Monad m) => MonadPlus (Emitter m) where
+  mzero = empty
 
--}
-  x <|> y = undefined
+  mplus = (<|>)
 
-{-
-instance Distributive Maybe
-  where
-    distribute a = maybe (pure Nothing) (Just) a
-
--}
-
-distribMaybe :: (Applicative g) => Compose Maybe g a -> Compose g Maybe a
-distribMaybe = Compose . maybe (pure Nothing) (fmap Just) . getCompose
-
-instance (Alternative g, Monad g) => Semigroup (Emitter g a) where
+instance (Alternative m, Monad m) => Semigroup (Emitter m a) where
   (<>) = (<|>)
 
-instance (Alternative g, Monad g) => Monoid (Emitter g a) where
+instance (Alternative m, Monad m) => Monoid (Emitter m a) where
   mempty = empty
 
   mappend = (<>)
-{-
-
--}
 
 -- | like a monadic mapMaybe. (See [witherable](https://hackage.haskell.org/package/witherable))
 mapE :: (Monad m) => (a -> m (Maybe b)) -> Emitter m a -> Emitter m b
@@ -126,29 +99,29 @@ mapE f e = Emitter go
             Just fa' -> pure (Just fa')
 
 -- | parse emitter which returns the original text on failure
-parseE :: (Functor m) => A.Parser a -> Emitter m String -> Emitter m (Either String a)
-parseE parser e = (\t -> either (const $ Left t) Right (A.parseOnly parser (Text.pack t))) <$> e
+parseE :: (Functor m) => A.Parser a -> Emitter m Text -> Emitter m (Either Text a)
+parseE parser e = (\t -> either (const $ Left t) Right (A.parseOnly parser t)) <$> e
 
 -- | no error-reporting parsing
-parseE_ :: (Monad m) => A.Parser a -> Emitter m String -> Emitter m a
+parseE_ :: (Monad m) => A.Parser a -> Emitter m Text -> Emitter m a
 parseE_ parser = mapE (pure . either (const Nothing) Just) . parseE parser
 
 -- | read parse emitter, returning the original string on error
 readE ::
   (Functor m, Read a) =>
-  Emitter m String ->
-  Emitter m (Either String a)
-readE = fmap parsed
+  Emitter m Text ->
+  Emitter m (Either Text a)
+readE = fmap $ parsed . unpack
   where
     parsed str =
       case reads str of
         [(a, "")] -> Right a
-        _err -> Left str
+        _err -> Left (pack str)
 
 -- | no error-reporting reading
 readE_ ::
   (Monad m, Read a) =>
-  Emitter m String ->
+  Emitter m Text ->
   Emitter m a
 readE_ = mapE (pure . either (const Nothing) Just) . readE
 

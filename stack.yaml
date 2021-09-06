@@ -1,0 +1,11 @@
+resolver: nightly-2021-02-12
+
+packages:
+  - .
+
+extra-deps:
+  - numhask-0.7.1.0
+  - random-1.2.0
+  - numhask-space-0.7.1.0
+
+allow-newer: true

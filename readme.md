@@ -44,3 +44,11 @@ Like other paradigms, boxes can be not fun places to get stuck in.  Much of the 
 Finally, the interface between boxes is a natural place to create concurrency, and Box.Queue provides queues that are guaranteed to not race or block.
 
 > “Do not define me by my gender or my socio-economic status, Noah Willis. Do not tell me who I am and do not tell me who society thinks I am and then put me in that box and expect me to stay there. Because, I swear to God, I will climb the hell out of that box and I will take that box you've just put me in and I will use that box to smash your face in until you're nothing more than a freckly, bloodied pulp. You got that, sweet cheeks?” ~ Megan Jacobson, Yellow
+
+
+recipe
+---
+
+```
+stack exec --test concurrency-tests --file-watch
+```
