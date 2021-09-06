@@ -1,5 +1,8 @@
-[box](https://tonyday567.github.io/box/index.html) [![Build Status](https://travis-ci.org/tonyday567/box.svg)](https://travis-ci.org/tonyday567/box)
+box
 ===
+
+[![Hackage](https://img.shields.io/hackage/v/box.svg)](https://hackage.haskell.org/package/box)
+[![Build Status](https://github.com/tonyday567/box/workflows/haskell-ci/badge.svg)](https://github.com/tonyday567/box/actions?query=workflow%3Ahaskell-ci) [![Hackage Deps](https://img.shields.io/hackage-deps/v/box.svg)](http://packdeps.haskellers.com/reverse/box)
 
 > The box is dark and full of terrors.
 
