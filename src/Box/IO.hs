@@ -27,6 +27,17 @@ module Box.IO
   )
 where
 
+import Box.Committer
+import Box.Connectors
+import Box.Cont
+import Box.Emitter
+import qualified Control.Concurrent.Classy.IORef as C
+import Control.Lens hiding ((.>), (:>), (<|), (|>))
+import qualified Control.Monad.Conc.Class as C
+import qualified Data.Sequence as Seq
+import Data.Text.IO (hGetLine)
+import NumHask.Prelude hiding (STM)
+
 -- $setup
 -- >>> :set -XOverloadedStrings
 -- >>> :set -XGADTs
@@ -42,20 +53,6 @@ where
 -- >>> import qualified Data.Sequence as Seq
 -- >>> import Data.Text (pack, Text)
 -- >>> import Data.Functor.Contravariant
-
-import Box.Committer
-import Box.Connectors
-import Box.Cont
-import Box.Emitter
-import qualified Control.Concurrent.Classy.IORef as C
-import Control.Lens hiding ((.>), (:>), (<|), (|>))
-import qualified Control.Monad.Conc.Class as C
-import qualified Data.Sequence as Seq
-import Data.Text.IO (hGetLine)
-import NumHask.Prelude hiding (STM)
-
--- $setup
--- >>> :set -XOverloadedStrings
 
 -- * console
 
