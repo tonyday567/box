@@ -32,14 +32,17 @@ import Box.Committer
 import Box.Cont
 import Box.Emitter
 import Box.Queue
-import Control.Concurrent.Classy.Async as C
+import Control.Concurrent.Async as C
 import Control.Lens
-import Control.Monad.Conc.Class (MonadConc)
 import qualified Data.Sequence as Seq
-import NumHask.Prelude hiding (STM, atomically)
+import Prelude
+import Control.Monad.Morph
+import Control.Monad.Trans.State.Lazy
+import Control.Monad
+import Data.Foldable
 
 -- | Turn a list into an 'Emitter' continuation via a 'Queue'
-fromListE :: (MonadConc m) => [a] -> Cont m (Emitter m a)
+fromListE :: [a] -> Cont IO (Emitter IO a)
 fromListE xs = Cont $ queueE (eListC (Emitter . pure . Just <$> xs))
 
 eListC :: (Monad m) => [Emitter m a] -> Committer m a -> m ()
@@ -86,11 +89,11 @@ fromToList_ xs f = do
   pure $ toList res
 
 -- | hook a committer action to a queue, creating an emitter continuation
-emitQ :: (MonadConc m) => (Committer m a -> m r) -> Cont m (Emitter m a)
+emitQ :: (Committer IO a -> IO r) -> Cont IO (Emitter IO a)
 emitQ cio = Cont $ \eio -> queueE cio eio
 
 -- | hook a committer action to a queue, creating an emitter continuation
-commitQ :: (MonadConc m) => (Emitter m a -> m r) -> Cont m (Committer m a)
+commitQ :: (Emitter IO a -> IO r) -> Cont IO (Committer IO a)
 commitQ eio = Cont $ \cio -> queueC cio eio
 
 -- | singleton sink
@@ -102,7 +105,7 @@ sink1 f e = do
     Just a' -> f a'
 
 -- | finite sink
-sink :: (MonadConc m) => Int -> (a -> m ()) -> Cont m (Committer m a)
+sink :: Int -> (a -> IO ()) -> Cont IO (Committer IO a)
 sink n f = commitQ $ replicateM_ n . sink1 f
 
 -- | singleton source
@@ -112,7 +115,7 @@ source1 a c = do
   void $ commit c a'
 
 -- | finite source
-source :: (MonadConc m) => Int -> m a -> Cont m (Emitter m a)
+source :: Int -> IO a -> Cont IO (Emitter IO a)
 source n f = emitQ $ replicateM_ n . source1 f
 
 -- | glues an emitter to a committer, then resupplies the emitter
@@ -124,21 +127,20 @@ forkEmit e c =
     pure a
 
 -- | fuse a committer to a buffer
-queueCommitter :: (MonadConc m) => Committer m a -> Cont m (Committer m a)
+queueCommitter :: Committer IO a -> Cont IO (Committer IO a)
 queueCommitter c = Cont $ \caction -> queueC caction (glue c)
 
 -- | fuse an emitter to a buffer
-queueEmitter :: (MonadConc m) => Emitter m a -> Cont m (Emitter m a)
+queueEmitter :: Emitter IO a -> Cont IO (Emitter IO a)
 queueEmitter e = Cont $ \eaction -> queueE (`glue` e) eaction
 
 -- | concurrently run two emitters
 --
 -- This differs from mappend in that the monoidal (and alternative) instance of an Emitter is left-biased (The left emitter exhausts before the right one is begun). This is non-deterministically concurrent.
 concurrentE ::
-  (MonadConc m) =>
-  Emitter m a ->
-  Emitter m a ->
-  Cont m (Emitter m a)
+  Emitter IO a ->
+  Emitter IO a ->
+  Cont IO (Emitter IO a)
 concurrentE e e' =
   Cont $ \eaction ->
     fst
@@ -147,14 +149,13 @@ concurrentE e e' =
         (queueE (`glue` e') eaction)
 
 -- | run two committers concurrently
-concurrentC :: (MonadConc m) => Committer m a -> Committer m a -> Cont m (Committer m a)
+concurrentC :: Committer IO a -> Committer IO a -> Cont IO (Committer IO a)
 concurrentC c c' = mergeC <$> eitherC c c'
 
 eitherC ::
-  (MonadConc m) =>
-  Committer m a ->
-  Committer m a ->
-  Cont m (Either (Committer m a) (Committer m a))
+  Committer IO a ->
+  Committer IO a ->
+  Cont IO (Either (Committer IO a) (Committer IO a))
 eitherC cl cr =
   Cont $
     \kk ->
@@ -163,7 +164,7 @@ eitherC cl cr =
           (queueC (kk . Left) (glue cl))
           (queueC (kk . Right) (glue cr))
 
-mergeC :: Either (Committer m a) (Committer m a) -> Committer m a
+mergeC :: Either (Committer IO a) (Committer IO a) -> Committer IO a
 mergeC ec =
   Committer $ \a ->
     case ec of
@@ -172,7 +173,7 @@ mergeC ec =
 
 -- | a box modifier that feeds commits back to the emitter
 feedback ::
-  (MonadConc m) =>
+  (Monad m) =>
   (a -> m (Maybe b)) ->
   Cont m (Box m b a) ->
   Cont m (Box m b a)

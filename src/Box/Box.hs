@@ -11,9 +11,12 @@
 
 -- | A box is something that commits and emits
 module Box.Box
-  ( Box (..),
+  ( BoxF (..),
+    Box,
     bmap,
     hoistb,
+    hmap',
+    hmap2',
     glue,
     glue_,
     glueb,
@@ -29,28 +32,46 @@ import Box.Emitter
 import Data.Functor.Contravariant
 import Data.Functor.Contravariant.Divisible
 import Data.Profunctor
-import NumHask.Prelude
+import Prelude
+import Control.Monad.Morph
+import Control.Applicative
+import Data.Void
+import Control.Monad
+import Data.Functor
+import Data.Bool
+import Yaya.Functor
+import Data.Distributive
 
--- | A Box is a product of a Committer m and an Emitter. Think of a box with an incoming wire and an outgoing wire. Now notice that the abstraction is reversable: are you looking at two wires from "inside a box"; a blind erlang grunt communicating with the outside world via the two thin wires, or are you looking from "outside the box"; interacting with a black box object. Either way, it's a box.
--- And either way, the committer is contravariant and the emitter covariant so it forms a profunctor.
+-- | A BoxF is a product of a Committer f and an Emitter g.
 --
--- a Box can also be seen as having an input tape and output tape, thus available for turing and finite-state machine metaphorics.
-data Box m c e = Box
-  { committer :: Committer m c,
-    emitter :: Emitter m e
+data BoxF f g c e = Box
+  { committer :: Committer f c,
+    emitter :: Emitter g e
   }
+
+instance (Functor f, Functor g) => Profunctor (BoxF f g) where
+  dimap f g (Box c e) = Box (contramap f c) (fmap g e)
+
+type Box f c e = BoxF f f c e
 
 -- | Wrong signature for the MFunctor class
 hoistb :: Monad m => (forall a. m a -> n a) -> Box m c e -> Box n c e
 hoistb nat (Box c e) = Box (hoist nat c) (hoist nat e)
 
-instance (Functor m) => Profunctor (Box m) where
-  dimap f g (Box c e) = Box (contramap f c) (fmap g e)
+-- wrong shape
+-- instance HFunctor Box where
+hmap' :: (forall a. m a -> n a) -> Box m c e -> Box n c e
+hmap' nat (Box c e) = Box (hmap nat c) (hmap nat e)
 
-instance (Alternative m, Monad m) => Semigroup (Box m c e) where
+-- wrong shape
+-- instance HFunctor BoxF where
+hmap2' :: (forall a. f a -> f' a) -> (forall a. g a -> g' a) -> BoxF f g c e -> BoxF f' g' c e
+hmap2' natf natg (Box c e) = Box (hmap natf c) (hmap natg e)
+
+instance (Monad g, Alternative g, Applicative f) => Semigroup (BoxF f g c e) where
   (<>) (Box c e) (Box c' e') = Box (c <> c') (e <> e')
 
-instance (Alternative m, Monad m) => Monoid (Box m c e) where
+instance (Monad g, Alternative g, Applicative f) => Monoid (BoxF f g c e) where
   mempty = Box mempty mempty
   mappend = (<>)
 
@@ -58,15 +79,22 @@ instance (Alternative m, Monad m) => Monoid (Box m c e) where
 bmap :: (Monad m) => (a' -> m (Maybe a)) -> (b -> m (Maybe b')) -> Box m a b -> Box m a' b'
 bmap fc fe (Box c e) = Box (mapC fc c) (mapE fe e)
 
-{-
-instance Category (Box Identity) where
-  id = Box ??? ???
-  (.) (Box c e) (Box c' e') = runIdentity $ glue c e' >> pure (Box c' e)
--}
+-- instance (Functor f, Functor g) => Category (Box f g) where
+--   id = Box ??? ???
+-- (.) (Box c e) (Box c' e') = runIdentity $ glue c e' >> pure (Box c' e)
 
 -- | composition of monadic boxes
 dotb :: (Monad m) => Box m a b -> Box m b c -> m (Box m a c)
 dotb (Box c e) (Box c' e') = glue c' e $> Box c e'
+
+-- | composition of monadic boxes
+dotf :: (Monad m) => Box m a b -> Box m b c -> m (Box m a c)
+dotf (Box c e) (Box c' e') = glue c' e $> Box c e'
+
+-- | composition of profunctors
+-- dotp :: Box m a b -> Box m b c -> m (Box m a c)
+-- dotp (Box c e) (Box c' e') = glue c' e $> Box c e'
+
 
 -- | Connect an emitter directly to a committer of the same type.
 --
@@ -91,7 +119,7 @@ glue_ c e = go
         Nothing -> go
         Just a' -> do
           b <- commit c a'
-          if b then go else pure ()
+          bool (pure ()) go b
 
 -- | Short-circuit a homophonuos box.
 glueb :: (Monad m) => Box m a a -> m ()
@@ -108,7 +136,7 @@ class Divap p where
   divap :: (a -> (b, c)) -> ((d, e) -> f) -> p b d -> p c e -> p a f
   conpur :: a -> p b a
 
-instance (Applicative m) => Divap (Box m) where
+instance (Applicative f, Applicative g) => Divap (BoxF f g) where
   divap split' merge (Box lc le) (Box rc re) =
     Box (divide split' lc rc) (liftA2 (curry merge) le re)
 
@@ -119,7 +147,7 @@ class Profunctor p => DecAlt p where
   choice :: (a -> Either b c) -> (Either d e -> f) -> p b d -> p c e -> p a f
   loss :: p Void b
 
-instance (Monad m, Alternative m) => DecAlt (Box m) where
+instance (Monad f, Functor g, Monad g, Alternative g) => DecAlt (BoxF f g) where
   choice split' merge (Box lc le) (Box rc re) =
     Box (choose split' lc rc) (fmap merge $ fmap Left le <|> fmap Right re)
   loss = Box (lose absurd) empty

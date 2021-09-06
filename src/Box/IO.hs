@@ -3,7 +3,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE RebindableSyntax #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -Wall #-}
@@ -31,12 +30,14 @@ import Box.Committer
 import Box.Connectors
 import Box.Cont
 import Box.Emitter
-import qualified Control.Concurrent.Classy.IORef as C
 import Control.Lens hiding ((.>), (:>), (<|), (|>))
-import qualified Control.Monad.Conc.Class as C
 import qualified Data.Sequence as Seq
-import Data.Text.IO (hGetLine)
-import NumHask.Prelude hiding (STM)
+import Prelude
+import System.IO
+import Control.Exception
+import Data.Bool
+import Data.Foldable
+import Data.IORef
 
 -- $setup
 -- >>> :set -XOverloadedStrings
@@ -46,24 +47,24 @@ import NumHask.Prelude hiding (STM)
 -- | emit Text from stdin inputs
 --
 -- >>> :t emit fromStdin
--- emit fromStdin :: IO (Maybe Text)
-fromStdin :: Emitter IO Text
-fromStdin = Emitter $ Just <$> NumHask.Prelude.getLine
+-- emit fromStdin :: IO (Maybe String)
+fromStdin :: Emitter IO String
+fromStdin = Emitter $ Just <$> getLine
 
 -- | commit to stdout
 --
 -- >>> commit toStdout ("I'm committed!" :: Text)
 -- I'm committed!
 -- True
-toStdout :: Committer IO Text
+toStdout :: Committer IO String
 toStdout = Committer $ \a -> putStrLn a >> pure True
 
 -- | finite console emitter
-fromStdinN :: Int -> Cont IO (Emitter IO Text)
-fromStdinN n = source n NumHask.Prelude.getLine
+fromStdinN :: Int -> Cont IO (Emitter IO String)
+fromStdinN n = source n getLine
 
 -- | finite console committer
-toStdoutN :: Int -> Cont IO (Committer IO Text)
+toStdoutN :: Int -> Cont IO (Committer IO String)
 toStdoutN n = sink n putStrLn
 
 -- | read from console, throwing away read errors
@@ -77,50 +78,50 @@ showStdout = contramap show toStdout
 -- * handle operations
 
 -- | Emits lines of Text from a handle.
-handleE :: Handle -> Emitter IO Text
+handleE :: Handle -> Emitter IO String
 handleE h = Emitter $ do
-  l :: (Either IOException Text) <- try (hGetLine h)
+  (l :: Either IOException String) <- try (hGetLine h)
   pure $ case l of
     Left _ -> Nothing
     Right a -> bool (Just a) Nothing (a == "")
 
 -- | Commit lines of Text to a handle.
-handleC :: Handle -> Committer IO Text
+handleC :: Handle -> Committer IO String
 handleC h = Committer $ \a -> do
   hPutStrLn h a
   pure True
 
 -- | Emits lines of Text from a file.
-fileE :: FilePath -> Cont IO (Emitter IO Text)
+fileE :: FilePath -> Cont IO (Emitter IO String)
 fileE fp = Cont $ \eio -> withFile fp ReadMode (eio . handleE)
 
 -- | Commits lines of Text to a file.
-fileWriteC :: FilePath -> Cont IO (Committer IO Text)
+fileWriteC :: FilePath -> Cont IO (Committer IO String)
 fileWriteC fp = Cont $ \cio -> withFile fp WriteMode (cio . handleC)
 
 -- | Commits lines of Text, appending to a file.
-fileAppendC :: FilePath -> Cont IO (Committer IO Text)
+fileAppendC :: FilePath -> Cont IO (Committer IO String)
 fileAppendC fp = Cont $ \cio -> withFile fp AppendMode (cio . handleC)
 
 -- | commit to an IORef
-cRef :: (C.MonadConc m) => m (Committer m a, m [a])
+cRef :: IO (Committer IO a, IO [a])
 cRef = do
-  ref <- C.newIORef Seq.empty
+  ref <- newIORef Seq.empty
   let c = Committer $ \a -> do
-        C.modifyIORef ref (Seq.:|> a)
+        modifyIORef ref (Seq.:|> a)
         pure True
-  let res = toList <$> C.readIORef ref
+  let res = toList <$> readIORef ref
   pure (c, res)
 
 -- | emit from a list IORef
-eRef :: (C.MonadConc m) => [a] -> m (Emitter m a)
+eRef :: [a] -> IO (Emitter IO a)
 eRef xs = do
-  ref <- C.newIORef xs
+  ref <- newIORef xs
   let e = Emitter $ do
-        as <- C.readIORef ref
+        as <- readIORef ref
         case as of
           [] -> pure Nothing
           (x : xs') -> do
-            C.writeIORef ref xs'
+            writeIORef ref xs'
             pure $ Just x
   pure e

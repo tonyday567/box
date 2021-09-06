@@ -22,14 +22,31 @@ where
 
 import Box.Cont
 import Box.Emitter
-import Control.Monad.Conc.Class as C
 import Data.Time
-import NumHask.Prelude hiding (STM, atomically)
-import NumHask.Space.Time
+import Prelude
+import Control.Monad.IO.Class
+import Data.Fixed (Fixed (MkFixed))
+import Control.Concurrent
+
+-- | convenience conversion to Double
+fromNominalDiffTime :: NominalDiffTime -> Double
+fromNominalDiffTime t = fromInteger i * 1e-12
+  where
+    (MkFixed i) = nominalDiffTimeToSeconds t
+
+-- | convenience conversion from Double
+toNominalDiffTime :: Double -> NominalDiffTime
+toNominalDiffTime x =
+  let d0 = ModifiedJulianDay 0
+      days = floor (x / fromNominalDiffTime nominalDay)
+      secs = x - fromIntegral days * fromNominalDiffTime nominalDay
+      t0 = UTCTime d0 (picosecondsToDiffTime 0)
+      t1 = UTCTime (addDays days d0) (picosecondsToDiffTime $ floor (secs / 1.0e-12))
+   in diffUTCTime t1 t0
 
 -- | sleep for x seconds
-sleep :: (MonadConc m) => Double -> m ()
-sleep x = C.threadDelay (floor $ x * 1e6)
+sleep :: Double -> IO ()
+sleep x = threadDelay (floor $ x * 1e6)
 
 -- | sleep until a certain time (in the future)
 sleepUntil :: UTCTime -> IO ()
@@ -45,16 +62,15 @@ data Stamped a = Stamped
   deriving (Eq, Show, Read)
 
 -- | Add the current time
-stampNow :: (MonadConc m, MonadIO m) => a -> m (LocalTime, a)
+stampNow :: a -> IO (LocalTime, a)
 stampNow a = do
   t <- liftIO getCurrentTime
   pure (utcToLocalTime utc t, a)
 
 -- | adding a time stamp
 stampE ::
-  (MonadConc m, MonadIO m) =>
-  Emitter m a ->
-  Emitter m (LocalTime, a)
+  Emitter IO a ->
+  Emitter IO (LocalTime, a)
 stampE = mapE (fmap Just . stampNow)
 
 -- | wait until Stamped time before emitting
