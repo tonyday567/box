@@ -27,6 +27,22 @@ import Data.Time
 import NumHask.Prelude hiding (STM, atomically)
 import NumHask.Space.Time
 
+-- $setup
+-- >>> :set -XOverloadedStrings
+-- >>> :set -XGADTs
+-- >>> :set -XNoImplicitPrelude
+-- >>> :set -XFlexibleContexts
+-- >>> import NumHask.Prelude
+-- >>> import qualified Prelude as P
+-- >>> import Data.Functor.Contravariant
+-- >>> import Box
+-- >>> import Control.Applicative
+-- >>> import Control.Monad.Conc.Class as C
+-- >>> import Control.Lens
+-- >>> import qualified Data.Sequence as Seq
+-- >>> import Data.Text (pack, Text)
+-- >>> import Data.Functor.Contravariant
+
 -- | sleep for x seconds
 sleep :: (MonadConc m) => Double -> m ()
 sleep x = C.threadDelay (floor $ x * 1e6)
@@ -69,7 +85,7 @@ emitOn =
     )
 
 -- | reset the emitter stamps to by in sync with the current time and adjust the speed
--- >>> let e1 = fromListE (zipWith (\x a -> Stamped (addUTCTime (fromDouble x) t) a) [0..5] [0..5])
+-- > let e1 = fromListE (zipWith (\x a -> Stamped (addUTCTime x t) a) [0..5] [0..5])
 playback :: Double -> Emitter IO (LocalTime, a) -> IO (Emitter IO (LocalTime, a))
 playback speed e = do
   r <- emit e

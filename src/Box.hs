@@ -14,7 +14,7 @@
 --
 -- “Boxes are surprisingly bulky. Discard or recycle the box your cell phone comes in as soon as you unpack it. You don’t need the manual or the CD that comes with it either. You’ll figure out the applications you need through using it.” — Marie Kondo
 module Box
-  ( -- $setup
+  ( -- $usage
     -- $continuations
     -- $boxes
     -- $commit
@@ -50,20 +50,37 @@ import Box.Time
 -- >>> import qualified Prelude as P
 -- >>> import Data.Functor.Contravariant
 -- >>> import Box
+-- >>> import Control.Applicative
 -- >>> import Control.Monad.Conc.Class as C
 -- >>> import Control.Lens
 -- >>> import qualified Data.Sequence as Seq
+-- >>> import Data.Text (pack, Text)
+-- >>> import Data.Functor.Contravariant
+
+-- $usage
+-- >>> :set -XOverloadedStrings
+-- >>> :set -XGADTs
+-- >>> :set -XNoImplicitPrelude
+-- >>> :set -XFlexibleContexts
+-- >>> import NumHask.Prelude
+-- >>> import qualified Prelude as P
+-- >>> import Data.Functor.Contravariant
+-- >>> import Box
+-- >>> import Control.Monad.Conc.Class as C
+-- >>> import Control.Lens
+-- >>> import qualified Data.Sequence as Seq
+-- >>> import Data.Text (pack, Text)
 
 -- $continuations
 --
 -- Continuations are very common in the API with 'Cont' as an inhouse type.
 --
--- >>> :t fromListE [1..3::Int]
+-- > :t fromListE [1..3::Int]
 -- fromListE [1..3::Int] :: MonadConc m => Cont m (Emitter m Int)
 --
 -- The applicative is usually the easiest way to think about and combine continuations with their unadorned counterparts.
 --
--- >>> let box' = Box <$> pure toStdout <*> fromListE ["a", "b" :: Text]
+-- >>> let box' = Box <$> pure toStdout <*> fromListE (pack <$> ["a", "b"])
 -- >>> :t box'
 -- box' :: Cont IO (Box IO Text Text)
 

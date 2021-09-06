@@ -38,6 +38,22 @@ import Control.Monad.Conc.Class (MonadConc)
 import qualified Data.Sequence as Seq
 import NumHask.Prelude hiding (STM, atomically)
 
+-- $setup
+-- >>> :set -XOverloadedStrings
+-- >>> :set -XGADTs
+-- >>> :set -XNoImplicitPrelude
+-- >>> :set -XFlexibleContexts
+-- >>> import NumHask.Prelude
+-- >>> import qualified Prelude as P
+-- >>> import Data.Functor.Contravariant
+-- >>> import Box
+-- >>> import Control.Applicative
+-- >>> import Control.Monad.Conc.Class as C
+-- >>> import Control.Lens
+-- >>> import qualified Data.Sequence as Seq
+-- >>> import Data.Text (pack, Text)
+-- >>> import Data.Functor.Contravariant
+
 -- | Turn a list into an 'Emitter' continuation via a 'Queue'
 fromListE :: (MonadConc m) => [a] -> Cont m (Emitter m a)
 fromListE xs = Cont $ queueE (eListC (Emitter . pure . Just <$> xs))

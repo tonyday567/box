@@ -27,6 +27,22 @@ module Box.IO
   )
 where
 
+-- $setup
+-- >>> :set -XOverloadedStrings
+-- >>> :set -XGADTs
+-- >>> :set -XNoImplicitPrelude
+-- >>> :set -XFlexibleContexts
+-- >>> import NumHask.Prelude
+-- >>> import qualified Prelude as P
+-- >>> import Data.Functor.Contravariant
+-- >>> import Box
+-- >>> import Control.Applicative
+-- >>> import Control.Monad.Conc.Class as C
+-- >>> import Control.Lens
+-- >>> import qualified Data.Sequence as Seq
+-- >>> import Data.Text (pack, Text)
+-- >>> import Data.Functor.Contravariant
+
 import Box.Committer
 import Box.Connectors
 import Box.Cont
