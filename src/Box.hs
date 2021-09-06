@@ -44,10 +44,7 @@ import Box.Time
 -- $setup
 -- >>> :set -XOverloadedStrings
 -- >>> :set -XGADTs
--- >>> :set -XNoImplicitPrelude
 -- >>> :set -XFlexibleContexts
--- >>> import NumHask.Prelude
--- >>> import qualified Prelude as P
 -- >>> import Data.Functor.Contravariant
 -- >>> import Box
 -- >>> import Control.Applicative
@@ -56,14 +53,15 @@ import Box.Time
 -- >>> import qualified Data.Sequence as Seq
 -- >>> import Data.Text (pack, Text)
 -- >>> import Data.Functor.Contravariant
+-- >>> import Data.Foldable
+-- >>> import Data.Bool
+-- >>> import Control.Monad.Morph
+-- >>> import Control.Monad.State.Lazy
 
 -- $usage
 -- >>> :set -XOverloadedStrings
 -- >>> :set -XGADTs
--- >>> :set -XNoImplicitPrelude
 -- >>> :set -XFlexibleContexts
--- >>> import NumHask.Prelude
--- >>> import qualified Prelude as P
 -- >>> import Data.Functor.Contravariant
 -- >>> import Box
 -- >>> import Control.Monad.Conc.Class as C
@@ -99,7 +97,7 @@ import Box.Time
 --
 -- 1. glue: direct fusion of committer and emitter
 --
--- >>> runCont $ glue <$> pure toStdout <*> fromListE (show <$> [1..3])
+-- >>> runCont $ glue <$> pure toStdout <*> fromListE ((pack . show) <$> [1..3])
 -- 1
 -- 2
 -- 3
@@ -112,24 +110,24 @@ import Box.Time
 --
 -- - the '(<$.>)' operator is short hand for runCont $ xyz 'Control.Applicative.(<$>)' zy.
 --
--- > glue <$> pure toStdout <*.> fromListE (show <$> [1..3])
--- > glue toStdout <$.> fromListE (show <$> [1..3])
+-- > glue <$> pure toStdout <*.> fromListE ((pack . show) <$> [1..3])
+-- > glue toStdout <$.> fromListE ((pack . show) <$> [1..3])
 --
 -- Changing the type in the Emitter (The double fmap is cutting through the Cont and Emitter layers):
 --
--- > glue toStdout <$.> fmap (fmap show) (fromListE [1..3])
+-- > glue toStdout <$.> fmap (fmap (pack . show)) (fromListE [1..3])
 --
 -- Changing the type in the committer (which is Contrvariant so needs to be a contramap):
 --
--- > glue (contramap show toStdout) <$.> fromListE [1..3]
+-- > glue (contramap (pack . show) toStdout) <$.> fromListE [1..3]
 --
 -- Using the box version of glue:
 --
--- > glueb <$.> (Box <$> pure toStdout <*> (fmap show <$> fromListE [1..3]))
+-- > glueb <$.> (Box <$> pure toStdout <*> (fmap (pack . show) <$> fromListE [1..3]))
 --
 -- 2. fusion of a box, with an (a -> m (Maybe b)) function to allow for mapping, filtering and simple effects.
 --
--- >>> let box' = Box <$> pure toStdout <*> fromListE (show <$> [1..3])
+-- >>> let box' = Box <$> pure toStdout <*> fromListE ((pack . show) <$> [1..3])
 -- >>> fuse (\a -> bool (pure $ Just $ "echo: " <> a) (pure Nothing) (a==("2"::Text))) <$.> box'
 -- echo: 1
 -- echo: 3
@@ -142,7 +140,7 @@ import Box.Time
 --
 -- Use mapC to modify a Committer and introduce effects.
 --
--- >>> let c = mapC (\a -> if a==2 then (sleep 0.1 >> putStrLn "stole a 2!" >> sleep 0.1 >> pure (Nothing)) else (pure (Just a))) (contramap (show :: Int -> Text) toStdout)
+-- >>> let c = mapC (\a -> if a==2 then (sleep 0.1 >> putStrLn "stole a 2!" >> sleep 0.1 >> pure (Nothing)) else (pure (Just a))) (contramap (pack . show) toStdout)
 -- >>> glueb <$.> (Box <$> pure c <*> fromListE [1..3])
 -- 1
 -- stole a 2!
@@ -152,7 +150,7 @@ import Box.Time
 --
 -- >>> let cFast = mapC (\b -> pure (Just b)) . contramap ("fast: " <>) $ toStdout
 -- >>> let cSlow = mapC (\b -> sleep 0.1 >> pure (Just b)) . contramap ("slow: " <>) $ toStdout
--- >>> (glueb <$.> (Box <$> pure (cFast <> cSlow) <*> fromListE (show <$> [1..3]))) <* sleep 1
+-- >>> (glueb <$.> (Box <$> pure (cFast <> cSlow) <*> fromListE ((pack . show) <$> [1..3]))) <* sleep 1
 -- fast: 1
 -- slow: 1
 -- fast: 2
@@ -162,7 +160,7 @@ import Box.Time
 --
 -- To approximate what is intuitively expected, use 'concurrentC'.
 --
--- >>> runCont $ (fromList_ (show <$> [1..3]) <$> (concurrentC cFast cSlow)) <> pure (sleep 1)
+-- >>> runCont $ (fromList_ ((pack . show) <$> [1..3]) <$> (concurrentC cFast cSlow)) <> pure (sleep 1)
 -- fast: 1
 -- fast: 2
 -- fast: 3
@@ -177,7 +175,7 @@ import Box.Time
 -- >>> ("I'm emitted!" :: Text) & Just & pure & Emitter & emit >>= print
 -- Just "I'm emitted!"
 --
--- >>> with (fromListE [1]) (\e' -> (emit e' & fmap show :: IO Text) >>= putStrLn & replicate 3 & sequence_)
+-- >>> with (fromListE [1]) (\e' -> (emit e' & fmap show) >>= putStrLn & replicate 3 & sequence_)
 -- Just 1
 -- Nothing
 -- Nothing
@@ -193,7 +191,7 @@ import Box.Time
 -- Use concurrentE to get some nondeterministic balance.
 --
 -- > let es = (join $ concurrentE <$> (fromListE [1..3]) <*> (fromListE [7..9]))
--- > glue (contramap show toStdout) <$.> es
+-- > glue (contramap (pack . show) toStdout) <$.> es
 -- 1
 -- 2
 -- 7
@@ -222,7 +220,7 @@ import Box.Time
 --
 -- Finite ends (collective noun for emitters and committers) can be created with 'sink' and 'source' eg
 --
--- >>> glue <$> contramap (show :: Int -> Text) <$> (sink 5 putStrLn) <*.> fromListE [1..]
+-- >>> glue <$> contramap show <$> (sink 5 putStrLn) <*.> fromListE [1..]
 -- 1
 -- 2
 -- 3
@@ -231,7 +229,7 @@ import Box.Time
 --
 -- Two infinite ends will tend to run infinitely.
 --
--- > glue <$> pure (contramap show toStdout) <*.> fromListE [1..]
+-- > glue <$> pure (contramap (pack . show) toStdout) <*.> fromListE [1..]
 --
 -- 1
 -- 2
@@ -241,7 +239,7 @@ import Box.Time
 --
 -- Use glueN to create a finite computation.
 --
--- >>> glueN 4 <$> pure (contramap show toStdout) <*.> fromListE [1..]
+-- >>> glueN 4 <$> pure (contramap (pack . show) toStdout) <*.> fromListE [1..]
 -- 1
 -- 2
 -- 3

@@ -2,7 +2,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE RebindableSyntax #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -24,12 +23,19 @@ module Box.Box
   )
 where
 
-import Box.Committer
-import Box.Emitter
-import Data.Functor.Contravariant
+import Box.Committer ( Committer(commit), mapC )
+import Box.Emitter ( Emitter(emit), mapE )
+import Data.Functor.Contravariant ( Contravariant(contramap) )
 import Data.Functor.Contravariant.Divisible
-import Data.Profunctor
-import NumHask.Prelude
+    ( Decidable(lose, choose), Divisible(conquer, divide) )
+import Data.Profunctor ( Profunctor(dimap) )
+import Prelude
+import Control.Applicative
+    ( Applicative(liftA2), Alternative((<|>), empty) )
+import Data.Void ( Void, absurd )
+import Control.Monad.Morph ( MFunctor(hoist) )
+import Data.Functor ( ($>) )
+import Control.Monad ( when )
 
 -- | A Box is a product of a Committer m and an Emitter. Think of a box with an incoming wire and an outgoing wire. Now notice that the abstraction is reversable: are you looking at two wires from "inside a box"; a blind erlang grunt communicating with the outside world via the two thin wires, or are you looking from "outside the box"; interacting with a black box object. Either way, it's a box.
 -- And either way, the committer is contravariant and the emitter covariant so it forms a profunctor.

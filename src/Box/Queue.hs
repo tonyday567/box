@@ -3,7 +3,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE RebindableSyntax #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -38,7 +37,9 @@ import Control.Concurrent.Classy.Async as C
 import Control.Concurrent.Classy.STM as C
 import Control.Monad.Catch as C
 import Control.Monad.Conc.Class as C
-import NumHask.Prelude hiding (STM, atomically)
+import Prelude
+import Control.Monad.Morph
+import Control.Applicative
 
 -- | 'Queue' specifies how messages are queued
 data Queue a

@@ -36,15 +36,15 @@ import Control.Concurrent.Classy.Async as C
 import Control.Lens
 import Control.Monad.Conc.Class (MonadConc)
 import qualified Data.Sequence as Seq
-import NumHask.Prelude hiding (STM, atomically)
+import Prelude
+import Control.Monad.State.Lazy
+import Control.Monad.Morph
+import Data.Foldable
 
 -- $setup
 -- >>> :set -XOverloadedStrings
 -- >>> :set -XGADTs
--- >>> :set -XNoImplicitPrelude
 -- >>> :set -XFlexibleContexts
--- >>> import NumHask.Prelude
--- >>> import qualified Prelude as P
 -- >>> import Data.Functor.Contravariant
 -- >>> import Box
 -- >>> import Control.Applicative
@@ -82,7 +82,7 @@ toList_ e = toList <$> flip execStateT Seq.empty (glue stateC (hoist lift e))
 
 -- | Glues a committer and emitter, taking n emits
 --
--- >>> glueN 4 <$> pure (contramap show toStdout) <*.> fromListE [1..]
+-- >>> glueN 4 <$> pure (contramap (pack . show) toStdout) <*.> fromListE [1..]
 -- 1
 -- 2
 -- 3

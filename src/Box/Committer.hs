@@ -23,7 +23,10 @@ where
 import Data.Functor.Contravariant
 import Data.Functor.Contravariant.Divisible
 import qualified Data.Sequence as Seq
-import NumHask.Prelude
+import Prelude
+import Control.Monad.Morph
+import Control.Monad.State.Lazy
+import Data.Void
 
 -- | a Committer a "commits" values of type a. A Sink and a Consumer are some other metaphors for this.
 --

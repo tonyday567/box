@@ -2,7 +2,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE RebindableSyntax #-}
 {-# OPTIONS_GHC -Wall #-}
 
 -- | A continuation type.
@@ -16,7 +15,9 @@ module Box.Cont
   )
 where
 
-import NumHask.Prelude hiding (STM, atomically)
+import Prelude
+import Control.Monad.IO.Class
+import Control.Applicative
 
 -- | A continuation similar to ` Control.Monad.ContT` but where the result type is swallowed by an existential
 newtype Cont m a = Cont

@@ -2,7 +2,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE RebindableSyntax #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -31,7 +30,13 @@ where
 
 import qualified Data.Attoparsec.Text as A
 import qualified Data.Sequence as Seq
-import NumHask.Prelude
+import Prelude
+import Control.Monad.Morph
+import Data.Text (Text, pack, unpack)
+import Control.Applicative
+import Control.Monad.State.Lazy
+import Data.Bool
+import Data.Foldable
 
 -- | an `Emitter` "emits" values of type a. A Source & a Producer (of a's) are the two other alternative but overloaded metaphors out there.
 --

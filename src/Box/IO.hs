@@ -3,7 +3,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE RebindableSyntax #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -Wall #-}
@@ -35,16 +34,18 @@ import qualified Control.Concurrent.Classy.IORef as C
 import Control.Lens hiding ((.>), (:>), (<|), (|>))
 import qualified Control.Monad.Conc.Class as C
 import qualified Data.Sequence as Seq
-import Data.Text.IO (hGetLine)
-import NumHask.Prelude hiding (STM)
+import Data.Text.IO as Text
+import Prelude
+import Data.Text as Text
+import Control.Exception
+import System.IO as IO
+import Data.Foldable
+import Data.Bool
 
 -- $setup
 -- >>> :set -XOverloadedStrings
 -- >>> :set -XGADTs
--- >>> :set -XNoImplicitPrelude
 -- >>> :set -XFlexibleContexts
--- >>> import NumHask.Prelude
--- >>> import qualified Prelude as P
 -- >>> import Data.Functor.Contravariant
 -- >>> import Box
 -- >>> import Control.Applicative
@@ -61,7 +62,7 @@ import NumHask.Prelude hiding (STM)
 -- >>> :t emit fromStdin
 -- emit fromStdin :: IO (Maybe Text)
 fromStdin :: Emitter IO Text
-fromStdin = Emitter $ Just <$> NumHask.Prelude.getLine
+fromStdin = Emitter $ Just <$> Text.getLine
 
 -- | commit to stdout
 --
@@ -69,15 +70,15 @@ fromStdin = Emitter $ Just <$> NumHask.Prelude.getLine
 -- I'm committed!
 -- True
 toStdout :: Committer IO Text
-toStdout = Committer $ \a -> putStrLn a >> pure True
+toStdout = Committer $ \a -> Text.putStrLn a >> pure True
 
 -- | finite console emitter
 fromStdinN :: Int -> Cont IO (Emitter IO Text)
-fromStdinN n = source n NumHask.Prelude.getLine
+fromStdinN n = source n Text.getLine
 
 -- | finite console committer
 toStdoutN :: Int -> Cont IO (Committer IO Text)
-toStdoutN n = sink n putStrLn
+toStdoutN n = sink n Text.putStrLn
 
 -- | read from console, throwing away read errors
 readStdin :: Read a => Emitter IO a
@@ -85,14 +86,14 @@ readStdin = mapE (pure . either (const Nothing) Just) . readE $ fromStdin
 
 -- | show to stdout
 showStdout :: Show a => Committer IO a
-showStdout = contramap show toStdout
+showStdout = contramap (Text.pack . show) toStdout
 
 -- * handle operations
 
 -- | Emits lines of Text from a handle.
 handleE :: Handle -> Emitter IO Text
 handleE h = Emitter $ do
-  l :: (Either IOException Text) <- try (hGetLine h)
+  l :: (Either IOException Text) <- try (Text.hGetLine h)
   pure $ case l of
     Left _ -> Nothing
     Right a -> bool (Just a) Nothing (a == "")
@@ -100,7 +101,7 @@ handleE h = Emitter $ do
 -- | Commit lines of Text to a handle.
 handleC :: Handle -> Committer IO Text
 handleC h = Committer $ \a -> do
-  hPutStrLn h a
+  Text.hPutStrLn h a
   pure True
 
 -- | Emits lines of Text from a file.

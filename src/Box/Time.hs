@@ -24,16 +24,14 @@ import Box.Cont
 import Box.Emitter
 import Control.Monad.Conc.Class as C
 import Data.Time
-import NumHask.Prelude hiding (STM, atomically)
-import NumHask.Space.Time
+import Prelude
+import Control.Monad.IO.Class
+import Data.Fixed (Fixed (MkFixed))
 
 -- $setup
 -- >>> :set -XOverloadedStrings
 -- >>> :set -XGADTs
--- >>> :set -XNoImplicitPrelude
 -- >>> :set -XFlexibleContexts
--- >>> import NumHask.Prelude
--- >>> import qualified Prelude as P
 -- >>> import Data.Functor.Contravariant
 -- >>> import Box
 -- >>> import Control.Applicative
@@ -46,6 +44,22 @@ import NumHask.Space.Time
 -- | sleep for x seconds
 sleep :: (MonadConc m) => Double -> m ()
 sleep x = C.threadDelay (floor $ x * 1e6)
+
+-- | convenience conversion to Double
+fromNominalDiffTime :: NominalDiffTime -> Double
+fromNominalDiffTime t = fromInteger i * 1e-12
+  where
+    (MkFixed i) = nominalDiffTimeToSeconds t
+
+-- | convenience conversion from Double
+toNominalDiffTime :: Double -> NominalDiffTime
+toNominalDiffTime x =
+  let d0 = ModifiedJulianDay 0
+      days = floor (x / fromNominalDiffTime nominalDay)
+      secs = x - fromIntegral days * fromNominalDiffTime nominalDay
+      t0 = UTCTime d0 (picosecondsToDiffTime 0)
+      t1 = UTCTime (addDays days d0) (picosecondsToDiffTime $ floor (secs / 1.0e-12))
+   in diffUTCTime t1 t0
 
 -- | sleep until a certain time (in the future)
 sleepUntil :: UTCTime -> IO ()
