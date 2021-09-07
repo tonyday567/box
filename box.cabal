@@ -14,8 +14,7 @@ license-file:       LICENSE
 build-type:         Simple
 tested-with:        GHC ==8.8.4 || ==8.10.4 || ==9.0.1 || ==9.2.0.20210821
 extra-source-files:
-  readme.md
-  stack.yaml
+  ChangeLog.md
 
 source-repository head
   type:     git
