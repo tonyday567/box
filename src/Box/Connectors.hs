@@ -35,11 +35,11 @@ import Box.Queue
 import Control.Concurrent.Classy.Async as C
 import Control.Lens
 import Control.Monad.Conc.Class (MonadConc)
+import Control.Monad.Morph
+import Control.Monad.State.Lazy
+import Data.Foldable
 import qualified Data.Sequence as Seq
 import Prelude
-import Control.Monad.State.Lazy
-import Control.Monad.Morph
-import Data.Foldable
 
 -- $setup
 -- >>> :set -XOverloadedStrings

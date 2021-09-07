@@ -33,13 +33,13 @@ import Box.Box
 import Box.Committer
 import Box.Cont
 import Box.Emitter
+import Control.Applicative
 import Control.Concurrent.Classy.Async as C
 import Control.Concurrent.Classy.STM as C
 import Control.Monad.Catch as C
 import Control.Monad.Conc.Class as C
-import Prelude
 import Control.Monad.Morph
-import Control.Applicative
+import Prelude
 
 -- | 'Queue' specifies how messages are queued
 data Queue a

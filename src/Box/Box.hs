@@ -23,19 +23,23 @@ module Box.Box
   )
 where
 
-import Box.Committer ( Committer(commit), mapC )
-import Box.Emitter ( Emitter(emit), mapE )
-import Data.Functor.Contravariant ( Contravariant(contramap) )
-import Data.Functor.Contravariant.Divisible
-    ( Decidable(lose, choose), Divisible(conquer, divide) )
-import Data.Profunctor ( Profunctor(dimap) )
-import Prelude
+import Box.Committer (Committer (commit), mapC)
+import Box.Emitter (Emitter (emit), mapE)
 import Control.Applicative
-    ( Applicative(liftA2), Alternative((<|>), empty) )
-import Data.Void ( Void, absurd )
-import Control.Monad.Morph ( MFunctor(hoist) )
-import Data.Functor ( ($>) )
-import Control.Monad ( when )
+  ( Alternative (empty, (<|>)),
+    Applicative (liftA2),
+  )
+import Control.Monad (when)
+import Control.Monad.Morph (MFunctor (hoist))
+import Data.Functor (($>))
+import Data.Functor.Contravariant (Contravariant (contramap))
+import Data.Functor.Contravariant.Divisible
+  ( Decidable (choose, lose),
+    Divisible (conquer, divide),
+  )
+import Data.Profunctor (Profunctor (dimap))
+import Data.Void (Void, absurd)
+import Prelude
 
 -- | A Box is a product of a Committer m and an Emitter. Think of a box with an incoming wire and an outgoing wire. Now notice that the abstraction is reversable: are you looking at two wires from "inside a box"; a blind erlang grunt communicating with the outside world via the two thin wires, or are you looking from "outside the box"; interacting with a black box object. Either way, it's a box.
 -- And either way, the committer is contravariant and the emitter covariant so it forms a profunctor.
