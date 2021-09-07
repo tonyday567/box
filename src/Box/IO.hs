@@ -31,16 +31,16 @@ import Box.Connectors
 import Box.Cont
 import Box.Emitter
 import qualified Control.Concurrent.Classy.IORef as C
+import Control.Exception
 import Control.Lens hiding ((.>), (:>), (<|), (|>))
 import qualified Control.Monad.Conc.Class as C
-import qualified Data.Sequence as Seq
-import Data.Text.IO as Text
-import Prelude
-import Data.Text as Text
-import Control.Exception
-import System.IO as IO
-import Data.Foldable
 import Data.Bool
+import Data.Foldable
+import qualified Data.Sequence as Seq
+import Data.Text as Text
+import Data.Text.IO as Text
+import System.IO as IO
+import Prelude
 
 -- $setup
 -- >>> :set -XOverloadedStrings

@@ -15,9 +15,9 @@ module Box.Cont
   )
 where
 
-import Prelude
-import Control.Monad.IO.Class
 import Control.Applicative
+import Control.Monad.IO.Class
+import Prelude
 
 -- | A continuation similar to ` Control.Monad.ContT` but where the result type is swallowed by an existential
 newtype Cont m a = Cont

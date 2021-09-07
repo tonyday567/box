@@ -13,7 +13,7 @@ newtype Emitter m a = Emitter { emit :: m (Maybe a)}
 ```
 It emits over a type constructor, m, and this is often monadic in nature, and often IO.
 
-Then there is the opposite.  There are things that commit stuff. We offer a Committer a particular thing and they take it away beyond our concerns. It is committed to the void. We offer an `a` and it is reported back whether the committment was succesful.The library calls this a Committer:
+Then there is the opposite.  There are things that commit stuff. We offer a Committer a particular thing and they take it away beyond our concerns. It is committed to the void. We offer an `a` and it is reported back whether the commitment was successful.The library calls this a Committer:
 
 ```
 newtype Committer m a = Committer { commit :: a -> m Bool}

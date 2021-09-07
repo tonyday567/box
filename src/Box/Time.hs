@@ -23,10 +23,10 @@ where
 import Box.Cont
 import Box.Emitter
 import Control.Monad.Conc.Class as C
-import Data.Time
-import Prelude
 import Control.Monad.IO.Class
 import Data.Fixed (Fixed (MkFixed))
+import Data.Time
+import Prelude
 
 -- $setup
 -- >>> :set -XOverloadedStrings
