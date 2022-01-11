@@ -11,6 +11,8 @@
 -- | `emit`
 module Box.Emitter
   ( Emitter (..),
+    type CoEmitter,
+    EmitterK (..),
     mapE,
     readE,
     readE_,
@@ -37,6 +39,7 @@ import Data.Foldable
 import qualified Data.Sequence as Seq
 import Data.Text (Text, pack, unpack)
 import Prelude
+import Box.Cont (Codensity)
 
 -- | an `Emitter` "emits" values of type a. A Source & a Producer (of a's) are the two other alternative but overloaded metaphors out there.
 --
@@ -44,6 +47,11 @@ import Prelude
 newtype Emitter m a = Emitter
   { emit :: m (Maybe a)
   }
+
+-- | CPS version of an emitter
+type CoEmitter m a = Codensity m (Emitter m a)
+
+newtype EmitterK m a = EmitterK { emitk :: Codensity m (Maybe a) }
 
 instance MFunctor Emitter where
   hoist nat (Emitter e) = Emitter (nat e)
@@ -175,8 +183,6 @@ toListE e = go Seq.empty e
 
 -- | emit from a StateT Seq
 --
--- FIXME: This compiles but is an infinite "a" emitter:
---
 -- let e1 = hoist (flip evalStateT (Seq.fromList ["a", "b"::Text])) stateE :: Emitter IO Text
 stateE :: (Monad m) => Emitter (StateT (Seq.Seq a) m) a
 stateE = Emitter $ do
@@ -199,6 +205,12 @@ unlistE es = mapE unlistS (hoist lift es)
           put xs'
           pure (Just x)
 
+
+-- | Stop an 'Emitter' after n 'emit's
+-- FIXME: this doesn't seem to work in combination with hoist eg
+-- takeE' n = hoist (`evalStateT` 0) . takeE n
+-- probably because it resets every time.
+--
 -- | Stop an 'Emitter' after n 'emit's
 takeE :: (Monad m) => Int -> Emitter m a -> Emitter (StateT Int m) a
 takeE n e = Emitter $ do
@@ -232,3 +244,4 @@ filterE p e = Emitter go
         Nothing -> pure Nothing
         Just x' ->
           bool go (pure (Just x')) (p x')
+

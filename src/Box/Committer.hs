@@ -11,6 +11,7 @@
 -- | `commit`
 module Box.Committer
   ( Committer (..),
+    CoCommitter,
     drain,
     mapC,
     premapC,
@@ -27,6 +28,7 @@ import Data.Functor.Contravariant.Divisible
 import qualified Data.Sequence as Seq
 import Data.Void
 import Prelude
+import Box.Cont (Codensity)
 
 -- | a Committer a "commits" values of type a. A Sink and a Consumer are some other metaphors for this.
 --
@@ -34,6 +36,9 @@ import Prelude
 newtype Committer m a = Committer
   { commit :: a -> m Bool
   }
+
+-- | cps version of a committer.
+type CoCommitter m a = Codensity m (Committer m a)
 
 instance MFunctor Committer where
   hoist nat (Committer c) = Committer $ nat . c
@@ -113,3 +118,4 @@ stateC = Committer $ \a -> do
 listC :: (Monad m) => Committer m a -> Committer m [a]
 listC c = Committer $ \as ->
   or <$> sequence (commit c <$> as)
+

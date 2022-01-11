@@ -71,16 +71,16 @@ import Box.Time
 
 -- $continuations
 --
--- Continuations are very common in the API with 'Cont' as an inhouse type.
+-- The use of 'Codensity' is very common.
 --
 -- > :t fromListE [1..3::Int]
--- fromListE [1..3::Int] :: MonadConc m => Cont m (Emitter m Int)
+-- fromListE [1..3::Int] :: MonadConc m => CoEmitter m Int
 --
--- The applicative is usually the easiest way to think about and combine continuations with their unadorned counterparts.
+-- The applicative is usually the easiest way to think about and combine codensities with their unadorned counterparts.
 --
 -- >>> let box' = Box <$> pure toStdout <*> fromListE (pack <$> ["a", "b"])
 -- >>> :t box'
--- box' :: Cont IO (Box IO Text Text)
+-- box' :: Codensity IO (Box IO Text Text)
 
 -- $boxes
 --
@@ -97,7 +97,7 @@ import Box.Time
 --
 -- 1. glue: direct fusion of committer and emitter
 --
--- >>> runCont $ glue <$> pure toStdout <*> fromListE ((pack . show) <$> [1..3])
+-- >>> close $ glue <$> pure toStdout <*> fromListE ((pack . show) <$> [1..3])
 -- 1
 -- 2
 -- 3
@@ -106,14 +106,14 @@ import Box.Time
 --
 -- Use of continuation applicative operators:
 --
--- - the '(<*.>)' operator is short hand for runCont $ xyz 'Control.Applicative.(<*>)' zy.
+-- - the '(<*.>)' operator is short hand for close $ xyz 'Control.Applicative.(<*>)' zy.
 --
--- - the '(<$.>)' operator is short hand for runCont $ xyz 'Control.Applicative.(<$>)' zy.
+-- - the '(<$.>)' operator is short hand for close $ xyz 'Control.Applicative.(<$>)' zy.
 --
 -- > glue <$> pure toStdout <*.> fromListE ((pack . show) <$> [1..3])
 -- > glue toStdout <$.> fromListE ((pack . show) <$> [1..3])
 --
--- Changing the type in the Emitter (The double fmap is cutting through the Cont and Emitter layers):
+-- Changing the type in the Emitter (The double fmap is cutting through the Codensity and Emitter layers):
 --
 -- > glue toStdout <$.> fmap (fmap (pack . show)) (fromListE [1..3])
 --
@@ -160,7 +160,7 @@ import Box.Time
 --
 -- To approximate what is intuitively expected, use 'concurrentC'.
 --
--- >>> runCont $ (fromList_ ((pack . show) <$> [1..3]) <$> (concurrentC cFast cSlow)) <> pure (sleep 1)
+-- >>> close $ (fromList_ ((pack . show) <$> [1..3]) <$> (concurrentC cFast cSlow)) <> pure (sleep 1)
 -- fast: 1
 -- fast: 2
 -- fast: 3
@@ -175,7 +175,7 @@ import Box.Time
 -- >>> ("I'm emitted!" :: Text) & Just & pure & Emitter & emit >>= print
 -- Just "I'm emitted!"
 --
--- >>> with (fromListE [1]) (\e' -> (emit e' & fmap show) >>= putStrLn & replicate 3 & sequence_)
+-- >>> runCodensity (fromListE [1]) (\e' -> (emit e' & fmap show) >>= putStrLn & replicate 3 & sequence_)
 -- Just 1
 -- Nothing
 -- Nothing
@@ -206,9 +206,9 @@ import Box.Time
 -- >>> toList . fst $ runIdentity $ flip execStateT (Seq.empty,Seq.fromList [1..4]) $ glue (hoist (zoom _1) stateC) (hoist (zoom _2) stateE)
 -- [1,2,3,4]
 --
--- For some reason, related to a lack of an MFunctor instance for Cont, but exactly not yet categorically pinned to a wall, the following compiles but is wrong.
+-- For some reason, related to a lack of an MFunctor instance for Codensity, but exactly not yet categorically pinned to a wall, the following compiles but is wrong.
 --
--- >>> flip runStateT (Seq.empty) $ runCont $ glue <$> pure stateC <*> fromListE [1..4]
+-- >>> flip runStateT (Seq.empty) $ close $ glue <$> pure stateC <*> fromListE [1..4]
 -- ((),fromList [])
 
 -- $finite

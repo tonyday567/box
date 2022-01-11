@@ -112,7 +112,7 @@ playback speed e = do
       pure (mapE (\(l, a) -> pure (Just (delta l, a))) e)
 
 -- | simulate a delay from a (Stamped a) Emitter relative to the first timestamp
-simulate :: Double -> Emitter IO (LocalTime, a) -> Cont IO (Emitter IO a)
-simulate speed e = Cont $ \eaction -> do
+simulate :: Double -> Emitter IO (LocalTime, a) -> CoEmitter IO a
+simulate speed e = Codensity $ \eaction -> do
   e' <- playback speed e
   eaction (emitOn e')

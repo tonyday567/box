@@ -11,6 +11,7 @@
 -- | A box is something that commits and emits
 module Box.Box
   ( Box (..),
+    CoBox,
     bmap,
     hoistb,
     glue,
@@ -18,18 +19,20 @@ module Box.Box
     glueb,
     fuse,
     dotb,
+    dotco,
     Divap (..),
     DecAlt (..),
+    stateB,
+    cobox,
   )
 where
 
-import Box.Committer (Committer (commit), mapC)
-import Box.Emitter (Emitter (emit), mapE)
+import Box.Committer
+import Box.Emitter
 import Control.Applicative
   ( Alternative (empty, (<|>)),
     Applicative (liftA2),
   )
-import Control.Monad (when)
 import Control.Monad.Morph (MFunctor (hoist))
 import Data.Functor (($>))
 import Data.Functor.Contravariant (Contravariant (contramap))
@@ -40,6 +43,10 @@ import Data.Functor.Contravariant.Divisible
 import Data.Profunctor (Profunctor (dimap))
 import Data.Void (Void, absurd)
 import Prelude
+import Box.Cont
+import Control.Monad.Codensity
+import Control.Monad.State.Lazy
+import qualified Data.Sequence as Seq
 
 -- | A Box is a product of a Committer m and an Emitter. Think of a box with an incoming wire and an outgoing wire. Now notice that the abstraction is reversable: are you looking at two wires from "inside a box"; a blind erlang grunt communicating with the outside world via the two thin wires, or are you looking from "outside the box"; interacting with a black box object. Either way, it's a box.
 -- And either way, the committer is contravariant and the emitter covariant so it forms a profunctor.
@@ -78,6 +85,26 @@ instance Category (Box Identity) where
 dotb :: (Monad m) => Box m a b -> Box m b c -> m (Box m a c)
 dotb (Box c e) (Box c' e') = glue c' e $> Box c e'
 
+-- | cps composition of monadic boxes
+dotco :: Monad m => Codensity m (Box m a b) -> Codensity m (Box m b c) -> Codensity m (Box m a c)
+dotco b b' = lift $ do
+  (Box c e) <- lowerCodensity b
+  (Box c' e') <- lowerCodensity b'
+  glue c' e
+  pure (Box c e')
+
+stateB :: (Monad m) => Box (StateT (Seq.Seq a) m) a a
+stateB = Box stateC stateE
+
+{-
+newtype CoBox' m a b = CoBox' { uncobox :: Codensity m (Box m a b) }
+
+instance (Monad m, Alternative m) => Category (CoBox' m) where
+  -- id = CoBox' idco
+  (.) (CoBox' b) (CoBox' b')= CoBox' (dotco b' b)
+
+-}
+
 -- | Connect an emitter directly to a committer of the same type.
 --
 -- The monadic action returns when the committer finishes.
@@ -103,7 +130,7 @@ glue_ c e = go
           b <- commit c a'
           if b then go else pure ()
 
--- | Short-circuit a homophonuos box.
+-- | Short-circuit a homophonuous box.
 glueb :: (Monad m) => Box m a a -> m ()
 glueb (Box c e) = glue c e
 
@@ -133,3 +160,8 @@ instance (Monad m, Alternative m) => DecAlt (Box m) where
   choice split' merge (Box lc le) (Box rc re) =
     Box (choose split' lc rc) (fmap merge $ fmap Left le <|> fmap Right re)
   loss = Box (lose absurd) empty
+
+type CoBox m a b = Codensity m (Box m a b)
+
+cobox :: CoCommitter m a -> CoEmitter m b -> CoBox m a b
+cobox c e = Box <$> c <*> e

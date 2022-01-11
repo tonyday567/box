@@ -73,11 +73,11 @@ toStdout :: Committer IO Text
 toStdout = Committer $ \a -> Text.putStrLn a >> pure True
 
 -- | finite console emitter
-fromStdinN :: Int -> Cont IO (Emitter IO Text)
+fromStdinN :: Int -> CoEmitter IO Text
 fromStdinN n = source n Text.getLine
 
 -- | finite console committer
-toStdoutN :: Int -> Cont IO (Committer IO Text)
+toStdoutN :: Int -> CoCommitter IO Text
 toStdoutN n = sink n Text.putStrLn
 
 -- | read from console, throwing away read errors
@@ -105,16 +105,16 @@ handleC h = Committer $ \a -> do
   pure True
 
 -- | Emits lines of Text from a file.
-fileE :: FilePath -> Cont IO (Emitter IO Text)
-fileE fp = Cont $ \eio -> withFile fp ReadMode (eio . handleE)
+fileE :: FilePath -> CoEmitter IO Text
+fileE fp = Codensity $ \eio -> withFile fp ReadMode (eio . handleE)
 
 -- | Commits lines of Text to a file.
-fileWriteC :: FilePath -> Cont IO (Committer IO Text)
-fileWriteC fp = Cont $ \cio -> withFile fp WriteMode (cio . handleC)
+fileWriteC :: FilePath -> CoCommitter IO Text
+fileWriteC fp = Codensity $ \cio -> withFile fp WriteMode (cio . handleC)
 
 -- | Commits lines of Text, appending to a file.
-fileAppendC :: FilePath -> Cont IO (Committer IO Text)
-fileAppendC fp = Cont $ \cio -> withFile fp AppendMode (cio . handleC)
+fileAppendC :: FilePath -> CoCommitter IO Text
+fileAppendC fp = Codensity $ \cio -> withFile fp AppendMode (cio . handleC)
 
 -- | commit to an IORef
 cRef :: (C.MonadConc m) => m (Committer m a, m [a])

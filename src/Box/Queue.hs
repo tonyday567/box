@@ -199,8 +199,8 @@ liftB :: (MonadConc m) => Box (STM m) a b -> Box m a b
 liftB (Box c e) = Box (hoist atomically c) (hoist atomically e)
 
 -- | turn a box action into a box continuation
-fromAction :: (MonadConc m) => (Box m a b -> m r) -> Cont m (Box m b a)
-fromAction baction = Cont $ fuseActions baction
+fromAction :: (MonadConc m) => (Box m a b -> m r) -> CoBox m b a
+fromAction baction = Codensity $ fuseActions baction
 
 -- | connect up two box actions via two queues
 fuseActions :: (MonadConc m) => (Box m a b -> m r) -> (Box m b a -> m r') -> m r'

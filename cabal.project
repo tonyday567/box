@@ -1,4 +1,5 @@
-packages: box.cabal
+packages:
+  box.cabal
 
 keep-going: true
 
