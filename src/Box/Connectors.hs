@@ -10,6 +10,8 @@
 -- | various ways to connect things up
 module Box.Connectors
   ( fromListE,
+    fromListE',
+    eListC'',
     fromList_,
     toListE',
     fromToList_,
@@ -40,6 +42,7 @@ import Control.Monad.State.Lazy
 import Data.Foldable
 import qualified Data.Sequence as Seq
 import Prelude
+import Data.Bool
 
 -- $setup
 -- >>> :set -XOverloadedStrings
@@ -55,6 +58,10 @@ import Prelude
 -- >>> import Data.Functor.Contravariant
 
 -- | Turn a list into an 'Emitter' continuation via a 'Queue'
+--
+-- >>> toListE' <$.> fromListE [1,2,3]
+-- [1,2,3]
+--
 fromListE :: (MonadConc m) => [a] -> CoEmitter m a
 fromListE xs = Codensity $ queueE (eListC (Emitter . pure . Just <$> xs))
 
@@ -65,6 +72,18 @@ eListC (e : es) c = do
   case x of
     Nothing -> pure ()
     Just x' -> commit c x' *> eListC es c
+
+eListC' :: (Monad m) => [a] -> Committer m a -> m ()
+eListC' [] _ = pure ()
+eListC' (x : xs) c = do
+  commit c x *> eListC' xs c
+
+eListC'' :: (Monad m) => [a] -> Committer m a -> m Bool
+eListC'' xs c =
+  foldr (\x _ -> commit c x) (pure False) xs
+
+fromListE' :: (MonadConc m) => [a] -> CoEmitter m a
+fromListE' xs = emitQ (eListC'' xs)
 
 -- | fromList_ directly supplies to a committer action
 --

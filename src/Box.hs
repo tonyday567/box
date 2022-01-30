@@ -57,6 +57,10 @@ import Box.Time
 -- >>> import Data.Bool
 -- >>> import Control.Monad.Morph
 -- >>> import Control.Monad.State.Lazy
+-- >>> toListE' <$.> fromListE [1,2,3]
+-- [1,2,3]
+--
+
 
 -- $usage
 -- >>> :set -XOverloadedStrings
