@@ -207,12 +207,12 @@ import Box.Time
 --
 -- State committers and emitters are related as follows:
 --
--- >>> toList . fst $ runIdentity $ flip execStateT (Seq.empty,Seq.fromList [1..4]) $ glue (hoist (zoom _1) stateC) (hoist (zoom _2) stateE)
+-- >>> toList . fst $ runIdentity $ flip execStateT (Seq.empty,Seq.fromList [1..4]) $ glue (hoist (zoom _1) push) (hoist (zoom _2) pop)
 -- [1,2,3,4]
 --
 -- For some reason, related to a lack of an MFunctor instance for Codensity, but exactly not yet categorically pinned to a wall, the following compiles but is wrong.
 --
--- >>> flip runStateT (Seq.empty) $ close $ glue <$> pure stateC <*> fromListE [1..4]
+-- >>> flip runStateT (Seq.empty) $ close $ glue <$> pure push <*> fromListE [1..4]
 -- ((),fromList [])
 
 -- $finite

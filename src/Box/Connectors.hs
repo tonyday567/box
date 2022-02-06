@@ -11,6 +11,7 @@
 module Box.Connectors
   ( fromListE,
     fromListE',
+    eListC',
     eListC'',
     fromList_,
     toListE',
@@ -42,7 +43,6 @@ import Control.Monad.State.Lazy
 import Data.Foldable
 import qualified Data.Sequence as Seq
 import Prelude
-import Data.Bool
 
 -- $setup
 -- >>> :set -XOverloadedStrings
@@ -88,7 +88,7 @@ fromListE' xs = emitQ (eListC'' xs)
 -- | fromList_ directly supplies to a committer action
 --
 fromList_ :: Monad m => [a] -> Committer m a -> m ()
-fromList_ xs c = flip evalStateT (Seq.fromList xs) $ glue (hoist lift c) stateE
+fromList_ xs c = flip evalStateT (Seq.fromList xs) $ glue (hoist lift c) pop
 
 -- | turn an emitter into a list
 --
@@ -96,7 +96,7 @@ fromList_ xs c = flip evalStateT (Seq.fromList xs) $ glue (hoist lift c) stateE
 --
 -- > toList_ == toListE
 toListE' :: (Monad m) => Emitter m a -> m [a]
-toListE' e = toList <$> flip execStateT Seq.empty (glue stateC (hoist lift e))
+toListE' e = toList <$> flip execStateT Seq.empty (glue push (hoist lift e))
 
 -- | Glues a committer and emitter, taking n emits
 --
@@ -116,7 +116,7 @@ fromToList_ :: (Monad m) => [a] -> (Box (StateT (Seq.Seq b, Seq.Seq a) m) b a ->
 fromToList_ xs f = do
   (res, _) <-
     flip execStateT (Seq.empty, Seq.fromList xs) $
-      f (Box (hoist (zoom _1) stateC) (hoist (zoom _2) stateE))
+      f (Box (hoist (zoom _1) push) (hoist (zoom _2) pop))
   pure $ toList res
 
 -- | hook a committer action to a queue, creating an emitter continuation

@@ -23,10 +23,10 @@ module Box.Emitter
     postmapM,
     toListE,
     unlistE,
-    stateE,
     takeE,
     takeUntilE,
     filterE,
+    pop,
   )
 where
 
@@ -36,10 +36,10 @@ import Control.Monad.State.Lazy
 import qualified Data.Attoparsec.Text as A
 import Data.Bool
 import Data.Foldable
-import qualified Data.Sequence as Seq
 import Data.Text (Text, pack, unpack)
 import Prelude
 import Box.Cont (Codensity)
+import qualified Data.Sequence as Seq
 
 -- | an `Emitter` "emits" values of type a. A Source & a Producer (of a's) are the two other alternative but overloaded metaphors out there.
 --
@@ -181,17 +181,6 @@ toListE e = go Seq.empty e
         Nothing -> pure (toList xs)
         Just x' -> go (xs Seq.:|> x') e'
 
--- | emit from a StateT Seq
---
--- let e1 = hoist (flip evalStateT (Seq.fromList ["a", "b"::Text])) stateE :: Emitter IO Text
-stateE :: (Monad m) => Emitter (StateT (Seq.Seq a) m) a
-stateE = Emitter $ do
-  xs' <- get
-  case xs' of
-    Seq.Empty -> pure Nothing
-    (x Seq.:<| xs'') -> do
-      put xs''
-      pure $ Just x
 
 -- | convert a list emitter to a Stateful element emitter
 unlistE :: (Monad m) => Emitter m [a] -> Emitter (StateT [a] m) a
@@ -245,3 +234,12 @@ filterE p e = Emitter go
         Just x' ->
           bool go (pure (Just x')) (p x')
 
+-- | pop from a StateT Seq
+pop :: (Monad m) => Emitter (StateT (Seq.Seq a) m) a
+pop = Emitter $ do
+  xs <- get
+  case xs of
+    Seq.Empty -> pure Nothing
+    (x Seq.:<| xs') -> do
+      put xs'
+      pure (Just x)

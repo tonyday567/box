@@ -29,7 +29,6 @@ library
     Box.Emitter
     Box.IO
     Box.Queue
-    Box.SeqQueue
     Box.Time
 
   hs-source-dirs:     src

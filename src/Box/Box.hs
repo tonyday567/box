@@ -12,6 +12,7 @@
 module Box.Box
   ( Box (..),
     CoBox,
+    CoBox' (..),
     bmap,
     hoistb,
     glue,
@@ -42,11 +43,13 @@ import Data.Functor.Contravariant.Divisible
   )
 import Data.Profunctor (Profunctor (dimap))
 import Data.Void (Void, absurd)
-import Prelude
+import Prelude hiding ((.), id)
 import Box.Cont
 import Control.Monad.Codensity
 import Control.Monad.State.Lazy
 import qualified Data.Sequence as Seq
+import Control.Category
+import Data.Bool
 
 -- | A Box is a product of a Committer m and an Emitter. Think of a box with an incoming wire and an outgoing wire. Now notice that the abstraction is reversable: are you looking at two wires from "inside a box"; a blind erlang grunt communicating with the outside world via the two thin wires, or are you looking from "outside the box"; interacting with a black box object. Either way, it's a box.
 -- And either way, the committer is contravariant and the emitter covariant so it forms a profunctor.
@@ -75,12 +78,6 @@ instance (Alternative m, Monad m) => Monoid (Box m c e) where
 bmap :: (Monad m) => (a' -> m (Maybe a)) -> (b -> m (Maybe b')) -> Box m a b -> Box m a' b'
 bmap fc fe (Box c e) = Box (mapC fc c) (mapE fe e)
 
-{-
-instance Category (Box Identity) where
-  id = Box ??? ???
-  (.) (Box c e) (Box c' e') = runIdentity $ glue c e' >> pure (Box c' e)
--}
-
 -- | composition of monadic boxes
 dotb :: (Monad m) => Box m a b -> Box m b c -> m (Box m a c)
 dotb (Box c e) (Box c' e') = glue c' e $> Box c e'
@@ -93,17 +90,11 @@ dotco b b' = lift $ do
   glue c' e
   pure (Box c e')
 
-stateB :: (Monad m) => Box (StateT (Seq.Seq a) m) a a
-stateB = Box stateC stateE
-
-{-
 newtype CoBox' m a b = CoBox' { uncobox :: Codensity m (Box m a b) }
 
-instance (Monad m, Alternative m) => Category (CoBox' m) where
-  -- id = CoBox' idco
+instance (Monad m) => Category (CoBox' m) where
+  -- id = CoBox' (Codensity (\ f ->  f id))
   (.) (CoBox' b) (CoBox' b')= CoBox' (dotco b' b)
-
--}
 
 -- | Connect an emitter directly to a committer of the same type.
 --
@@ -128,11 +119,15 @@ glue_ c e = go
         Nothing -> go
         Just a' -> do
           b <- commit c a'
-          if b then go else pure ()
+          bool (pure ()) go b
 
 -- | Short-circuit a homophonuous box.
 glueb :: (Monad m) => Box m a a -> m ()
 glueb (Box c e) = glue c e
+
+glue' :: (Monad m) => Committer m a -> Emitter m a -> m ()
+glue' c e = fix $ \rec -> emit e >>= maybe (pure False) (commit c) >>= bool (pure ()) rec
+
 
 -- | fuse a box
 --
@@ -165,3 +160,6 @@ type CoBox m a b = Codensity m (Box m a b)
 
 cobox :: CoCommitter m a -> CoEmitter m b -> CoBox m a b
 cobox c e = Box <$> c <*> e
+
+stateB :: (Monad m) => Box (StateT (Seq.Seq a) m) a a
+stateB = Box push pop

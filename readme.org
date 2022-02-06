@@ -1,0 +1,74 @@
+#+TITLE: box
+
+[[https://hackage.haskell.org/package/box][file:https://img.shields.io/hackage/v/box.svg]] [[https://github.com/tonyday567/box/actions?query=workflow%3Ahaskell-ci][file:https://github.com/tonyday567/box/workflows/haskell-ci/badge.svg]]
+
+A profunctor system.
+---
+
+#+begin_quote
+What is all this stuff around me; this stream of experiences that I seem to be having all the time? Throughout history there have been people who say it is all illusion. ~ S Blackmore
+#+end_quote
+
+This library grew out of using pipes. I wanted to try out the streaming library but it didn't yet have a concurrency system, so I ripped out the ends management and queues of pipes-concurrency. After a while I realised I was using this functionality ~instead~ of streams. There was often no stream, just pure computes with management of queues and effects at either end. I've used streamly without looking under the hood and the API, at least, seems somewhat familial.
+
+It's a bit of a hodge-podge, but there's a good idea or two in here somewhere I'm sure.
+
+- Box.Queue is well balanced and has never raced or blocked. I don't think it can.
+- Boxes are as fast as the underlying computation, and you tend not to notice them once they're coded up.
+- a Box is also a profunctor, which get a lot of love these days, and should be well supported for a bit.
+- Continuation-based coding is very hard (at least for me), but seems less hard with the library in hand.
+
+* Usage
+
+#+begin_src haskell
+:set prompt "> "
+:set -XOverloadedStrings
+import Box
+#+end_src
+
+* Pure Effect Boxes
+
+How would you create a pure box?
+
+#+begin_src haskell :results output
+import Control.Applicative
+import Control.Monad.Morph
+import Prelude
+import Control.Monad.State.Lazy
+import Data.Sequence (Seq(..))
+import qualified Data.Sequence as Seq
+#+end_src
+
+#+RESULTS:
+
+#+begin_src haskell
+:{
+pop :: (Monad m) => StateT (Seq a) m (Maybe a)
+pop = do
+  xs <- get
+  case xs of
+    Empty -> pure Nothing
+    (x :<| xs') -> do
+      put xs'
+      pure (Just x)
+
+push :: (Monad m) => a -> StateT (Seq a) m Bool
+push a = do
+  modify (:|> a)
+  pure True
+
+seqq :: (Monad m) => Box (StateT (Seq a) m) a a
+seqq = Box (Committer push) (Emitter pop)
+:}
+#+end_src
+
+#+RESULTS:
+
+#+begin_src haskell
+:t seqq
+#+end_src
+
+#+RESULTS:
+: seqq :: Monad m => Box (StateT (Seq a) m) a a
+
+But then how to connect it up to other boxes in the underlying Monad?

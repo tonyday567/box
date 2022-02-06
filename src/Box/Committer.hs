@@ -16,8 +16,8 @@ module Box.Committer
     mapC,
     premapC,
     postmapC,
-    stateC,
     listC,
+    push,
   )
 where
 
@@ -106,16 +106,13 @@ postmapC f c = Committer $ \a -> do
   f c
   pure r
 
--- | commit to a StateT 'Seq'.
---
--- Seq is used because only a finite number of commits are expected and because snoc'ing is cool.
-stateC :: (Monad m) => Committer (StateT (Seq.Seq a) m) a
-stateC = Committer $ \a -> do
-  modify (Seq.:|> a)
-  pure True
-
 -- | list committer
 listC :: (Monad m) => Committer m a -> Committer m [a]
 listC c = Committer $ \as ->
   or <$> sequence (commit c <$> as)
 
+-- | push to to a StateT 'Seq'.
+push :: (Monad m) => Committer (StateT (Seq.Seq a) m) a
+push = Committer $ \a -> do
+  modify (Seq.:|> a)
+  pure True
