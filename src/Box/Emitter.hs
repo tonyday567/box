@@ -22,6 +22,7 @@ module Box.Emitter
     postmapE,
     postmapM,
     toListE,
+    toListM,
     unlistE,
     takeE,
     takeUntilE,
@@ -40,6 +41,7 @@ import Data.Text (Text, pack, unpack)
 import Prelude
 import Box.Cont (Codensity)
 import qualified Data.Sequence as Seq
+import qualified Data.DList as D
 
 -- | an `Emitter` "emits" values of type a. A Source & a Producer (of a's) are the two other alternative but overloaded metaphors out there.
 --
@@ -181,6 +183,10 @@ toListE e = go Seq.empty e
         Nothing -> pure (toList xs)
         Just x' -> go (xs Seq.:|> x') e'
 
+toListM :: Monad m => Emitter m a -> m [a]
+toListM e =
+  D.toList <$>
+  fix (\ rec xs -> emit e >>= maybe (pure xs) (rec . D.snoc xs)) D.empty
 
 -- | convert a list emitter to a Stateful element emitter
 unlistE :: (Monad m) => Emitter m [a] -> Emitter (StateT [a] m) a

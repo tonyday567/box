@@ -99,7 +99,7 @@ emitOn =
     )
 
 -- | reset the emitter stamps to by in sync with the current time and adjust the speed
--- > let e1 = fromListE (zipWith (\x a -> Stamped (addUTCTime x t) a) [0..5] [0..5])
+-- > let e1 = qList (zipWith (\x a -> Stamped (addUTCTime x t) a) [0..5] [0..5])
 playback :: Double -> Emitter IO (LocalTime, a) -> IO (Emitter IO (LocalTime, a))
 playback speed e = do
   r <- emit e

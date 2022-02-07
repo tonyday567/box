@@ -12,10 +12,11 @@
 module Box.Box
   ( Box (..),
     CoBox,
-    CoBox' (..),
+    CoBoxM (..),
     bmap,
     hoistb,
     glue,
+    glue',
     glue_,
     glueb,
     fuse,
@@ -48,8 +49,8 @@ import Box.Cont
 import Control.Monad.Codensity
 import Control.Monad.State.Lazy
 import qualified Data.Sequence as Seq
-import Control.Category
 import Data.Bool
+import Data.Semigroupoid
 
 -- | A Box is a product of a Committer m and an Emitter. Think of a box with an incoming wire and an outgoing wire. Now notice that the abstraction is reversable: are you looking at two wires from "inside a box"; a blind erlang grunt communicating with the outside world via the two thin wires, or are you looking from "outside the box"; interacting with a black box object. Either way, it's a box.
 -- And either way, the committer is contravariant and the emitter covariant so it forms a profunctor.
@@ -82,19 +83,6 @@ bmap fc fe (Box c e) = Box (mapC fc c) (mapE fe e)
 dotb :: (Monad m) => Box m a b -> Box m b c -> m (Box m a c)
 dotb (Box c e) (Box c' e') = glue c' e $> Box c e'
 
--- | cps composition of monadic boxes
-dotco :: Monad m => Codensity m (Box m a b) -> Codensity m (Box m b c) -> Codensity m (Box m a c)
-dotco b b' = lift $ do
-  (Box c e) <- lowerCodensity b
-  (Box c' e') <- lowerCodensity b'
-  glue c' e
-  pure (Box c e')
-
-newtype CoBox' m a b = CoBox' { uncobox :: Codensity m (Box m a b) }
-
-instance (Monad m) => Category (CoBox' m) where
-  -- id = CoBox' (Codensity (\ f ->  f id))
-  (.) (CoBox' b) (CoBox' b')= CoBox' (dotco b' b)
 
 -- | Connect an emitter directly to a committer of the same type.
 --
@@ -163,3 +151,16 @@ cobox c e = Box <$> c <*> e
 
 stateB :: (Monad m) => Box (StateT (Seq.Seq a) m) a a
 stateB = Box push pop
+
+-- | cps composition of monadic boxes
+dotco :: Monad m => Codensity m (Box m a b) -> Codensity m (Box m b c) -> Codensity m (Box m a c)
+dotco b b' = lift $ do
+  (Box c e) <- lowerCodensity b
+  (Box c' e') <- lowerCodensity b'
+  glue c' e
+  pure (Box c e')
+
+newtype CoBoxM m a b = CoBoxM { uncobox :: Codensity m (Box m a b) }
+
+instance (Monad m) => Semigroupoid (CoBoxM m) where
+  o (CoBoxM b) (CoBoxM b')= CoBoxM (dotco b' b)

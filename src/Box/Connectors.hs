@@ -9,12 +9,11 @@
 
 -- | various ways to connect things up
 module Box.Connectors
-  ( fromListE,
-    fromListE',
-    eListC',
-    eListC'',
-    fromList_,
-    toListE',
+  ( qList,
+    qList',
+    popList,
+    pushList,
+    pushListN,
     fromToList_,
     emitQ,
     commitQ,
@@ -57,50 +56,40 @@ import Prelude
 -- >>> import Data.Text (pack, Text)
 -- >>> import Data.Functor.Contravariant
 
--- | Turn a list into an 'Emitter' continuation via a 'Queue'
+-- | queue a list
 --
--- >>> toListE' <$.> fromListE [1,2,3]
+-- Returns early if a commit fails.
+--
+-- >>> pushList <$|> qList [1,2,3]
 -- [1,2,3]
 --
-fromListE :: (MonadConc m) => [a] -> CoEmitter m a
-fromListE xs = Codensity $ queueE (eListC (Emitter . pure . Just <$> xs))
+qList :: (MonadConc m) => [a] -> CoEmitter m a
+qList xs = emitQ (\c -> fmap and (traverse (commit c) xs))
 
-eListC :: (Monad m) => [Emitter m a] -> Committer m a -> m ()
-eListC [] _ = pure ()
-eListC (e : es) c = do
-  x <- emit e
-  case x of
-    Nothing -> pure ()
-    Just x' -> commit c x' *> eListC es c
-
-eListC' :: (Monad m) => [a] -> Committer m a -> m ()
-eListC' [] _ = pure ()
-eListC' (x : xs) c = do
-  commit c x *> eListC' xs c
-
-eListC'' :: (Monad m) => [a] -> Committer m a -> m Bool
-eListC'' xs c =
-  foldr (\x _ -> commit c x) (pure False) xs
-
-fromListE' :: (MonadConc m) => [a] -> CoEmitter m a
-fromListE' xs = emitQ (eListC'' xs)
-
--- | fromList_ directly supplies to a committer action
+-- | strictly queue a list
 --
-fromList_ :: Monad m => [a] -> Committer m a -> m ()
-fromList_ xs c = flip evalStateT (Seq.fromList xs) $ glue (hoist lift c) pop
+-- queue list version that ignores the commit flag
+qList' :: (MonadConc m) => [a] -> CoEmitter m a
+qList' xs = emitQ (\c -> traverse_ (commit c) xs)
 
--- | turn an emitter into a list
+-- \e -> fmap (any isNothing) (traverse emit (repeat e))
+
+-- | directly supply a list to a committer action, via pop
 --
--- uses StateT internally, but should be the same as 'toListE', which uses recursion.
+popList :: Monad m => [a] -> Committer m a -> m ()
+popList xs c = flip evalStateT (Seq.fromList xs) $ glue (hoist lift c) pop
+
+-- | push an into a list, via push
 --
--- > toList_ == toListE
-toListE' :: (Monad m) => Emitter m a -> m [a]
-toListE' e = toList <$> flip execStateT Seq.empty (glue push (hoist lift e))
+pushList :: (Monad m) => Emitter m a -> m [a]
+pushList e = toList <$> flip execStateT Seq.empty (glue push (hoist lift e))
+
+pushListN :: (Monad m) => Int -> Emitter m a -> m [a]
+pushListN n e = toList <$> flip execStateT Seq.empty (glueN n push (hoist lift e))
 
 -- | Glues a committer and emitter, taking n emits
 --
--- >>> glueN 4 <$> pure (contramap (pack . show) toStdout) <*.> fromListE [1..]
+-- > glueN 4 <$> pure (contramap (pack . show) toStdout) <*.> qList [1..]
 -- 1
 -- 2
 -- 3
@@ -157,11 +146,11 @@ forkEmit e c =
     maybe (pure ()) (void <$> commit c) a
     pure a
 
--- | fuse a committer to a buffer
+-- | queue a committer
 queueCommitter :: (MonadConc m) => Committer m a -> CoCommitter m a
 queueCommitter c = Codensity $ \caction -> queueC caction (glue c)
 
--- | fuse an emitter to a buffer
+-- | queue an emitter
 queueEmitter :: (MonadConc m) => Emitter m a -> CoEmitter m a
 queueEmitter e = Codensity $ \eaction -> queueE (`glue` e) eaction
 

@@ -9,8 +9,9 @@
 module Box.Cont
   ( Codensity (..),
     close,
-    (<$.>),
-    (<*.>),
+    process,
+    (<$|>),
+    (<*|>),
   )
 where
 
@@ -30,21 +31,27 @@ instance (Functor m, Semigroup a, Monoid a) => Monoid (Codensity m a) where
 close :: Codensity m (m r) -> m r
 close x = runCodensity x id
 
-infixr 3 <$.>
-
--- | fmap over a continuation and then close.
+-- | flipped runCodensity
 --
 -- This is equivalent to \f a -> f =<< lowerCodensity a (which is also CoKleisi),
 -- but without any Monad constraint.
 --
 -- The . position is towards the continuation
-(<$.>) :: (a -> m r) -> Codensity m a -> m r
-(<$.>) f a = close (fmap f a)
+process :: (a -> m r) -> Codensity m a -> m r
+process = flip runCodensity
 
-infixr 3 <*.>
+infixr 3 <$|>
 
--- | fmap over a continuation and then run the result.
+-- | map over a continuation and close.
 --
--- The . position is towards the continuation
-(<*.>) :: Codensity m (a -> m r) -> Codensity m a -> m r
-(<*.>) f a = close (f <*> a)
+(<$|>) :: (a -> m r) -> Codensity m a -> m r
+(<$|>) = process
+
+
+infixr 3 <*|>
+
+-- | apply to the continuation and close.
+--
+-- The | is positioned towards the continuation
+(<*|>) :: Codensity m (a -> m r) -> Codensity m a -> m r
+(<*|>) f a = close (f <*> a)
