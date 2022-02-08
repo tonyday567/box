@@ -12,16 +12,12 @@
 module Box.Committer
   ( Committer (..),
     CoCommitter,
-    drain,
     mapC,
-    premapC,
-    postmapC,
     listC,
     push,
   )
 where
 
-import Control.Monad.Morph
 import Control.Monad.State.Lazy
 import Data.Functor.Contravariant
 import Data.Functor.Contravariant.Divisible
@@ -29,10 +25,21 @@ import qualified Data.Sequence as Seq
 import Data.Void
 import Prelude
 import Box.Cont (Codensity)
+import Box.Functor
 
--- | a Committer a "commits" values of type a. A Sink and a Consumer are some other metaphors for this.
+-- $setup
+-- >>> :set -XOverloadedStrings
+-- >>> import Box
+-- >>> import Prelude
+
+-- | a Committer a "commits" values of type a and signals success or otherwise. A Sink and a Consumer are some other metaphors for this.
 --
 -- A Committer absorbs the value being committed; the value disappears into the opaque thing that is a Committer from the pov of usage.
+--
+-- >>> commit toStdout "I'm committed!"
+-- I'm committed!
+-- True
+--
 newtype Committer m a = Committer
   { commit :: a -> m Bool
   }
@@ -40,8 +47,8 @@ newtype Committer m a = Committer
 -- | cps version of a committer.
 type CoCommitter m a = Codensity m (Committer m a)
 
-instance MFunctor Committer where
-  hoist nat (Committer c) = Committer $ nat . c
+instance FFunctor Committer where
+  foist nat (Committer c) = Committer $ nat . c
 
 instance (Applicative m) => Semigroup (Committer m a) where
   (<>) i1 i2 = Committer (\a -> (||) <$> commit i1 a <*> commit i2 a)
@@ -71,12 +78,6 @@ instance (Applicative m) => Decidable (Committer m) where
         Left b -> commit i1 b
         Right c -> commit i2 c
 
--- | Do nothing with values that are committed.
---
--- This is useful for keeping the commit end of a box or pipeline open.
-drain :: (Applicative m) => Committer m a
-drain = Committer (\_ -> pure True)
-
 -- | This is a contramapMaybe, if such a thing existed, as the contravariant version of a mapMaybe.  See [witherable](https://hackage.haskell.org/package/witherable)
 mapC :: (Monad m) => (b -> m (Maybe a)) -> Committer m a -> Committer m b
 mapC f c = Committer go
@@ -86,25 +87,6 @@ mapC f c = Committer go
       case fb of
         Nothing -> pure True
         Just fb' -> commit c fb'
-
--- | adds a monadic action to the committer
-premapC ::
-  (Applicative m) =>
-  (Committer m a -> m ()) ->
-  Committer m a ->
-  Committer m a
-premapC f c = Committer $ \a -> f c *> commit c a
-
--- | adds a post-commit monadic action to the committer
-postmapC ::
-  (Monad m) =>
-  (Committer m a -> m ()) ->
-  Committer m a ->
-  Committer m a
-postmapC f c = Committer $ \a -> do
-  r <- commit c a
-  f c
-  pure r
 
 -- | list committer
 listC :: (Monad m) => Committer m a -> Committer m [a]

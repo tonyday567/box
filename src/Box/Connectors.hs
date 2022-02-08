@@ -37,24 +37,18 @@ import Box.Queue
 import Control.Concurrent.Classy.Async as C
 import Control.Lens
 import Control.Monad.Conc.Class (MonadConc)
-import Control.Monad.Morph
 import Control.Monad.State.Lazy
 import Data.Foldable
 import qualified Data.Sequence as Seq
 import Prelude
+import Box.Functor
 
 -- $setup
 -- >>> :set -XOverloadedStrings
--- >>> :set -XGADTs
--- >>> :set -XFlexibleContexts
--- >>> import Data.Functor.Contravariant
 -- >>> import Box
--- >>> import Control.Applicative
--- >>> import Control.Monad.Conc.Class as C
--- >>> import Control.Lens
--- >>> import qualified Data.Sequence as Seq
--- >>> import Data.Text (pack, Text)
--- >>> import Data.Functor.Contravariant
+-- >>> import Prelude
+-- >>> import Data.Bool
+-- >>> import Control.Monad
 
 -- | queue a list
 --
@@ -64,28 +58,28 @@ import Prelude
 -- [1,2,3]
 --
 qList :: (MonadConc m) => [a] -> CoEmitter m a
-qList xs = emitQ (\c -> fmap and (traverse (commit c) xs))
+qList xs = emitQ Unbounded (\c -> fmap and (traverse (commit c) xs))
 
 -- | strictly queue a list
 --
 -- queue list version that ignores the commit flag
 qList' :: (MonadConc m) => [a] -> CoEmitter m a
-qList' xs = emitQ (\c -> traverse_ (commit c) xs)
+qList' xs = emitQ Unbounded (\c -> traverse_ (commit c) xs)
 
 -- \e -> fmap (any isNothing) (traverse emit (repeat e))
 
 -- | directly supply a list to a committer action, via pop
 --
 popList :: Monad m => [a] -> Committer m a -> m ()
-popList xs c = flip evalStateT (Seq.fromList xs) $ glue (hoist lift c) pop
+popList xs c = flip evalStateT (Seq.fromList xs) $ glue (foist lift c) pop
 
 -- | push an into a list, via push
 --
 pushList :: (Monad m) => Emitter m a -> m [a]
-pushList e = toList <$> flip execStateT Seq.empty (glue push (hoist lift e))
+pushList e = toList <$> flip execStateT Seq.empty (glue push (foist lift e))
 
 pushListN :: (Monad m) => Int -> Emitter m a -> m [a]
-pushListN n e = toList <$> flip execStateT Seq.empty (glueN n push (hoist lift e))
+pushListN n e = toList <$> flip execStateT Seq.empty (glueN n push (foist lift e))
 
 -- | Glues a committer and emitter, taking n emits
 --
@@ -95,7 +89,7 @@ pushListN n e = toList <$> flip execStateT Seq.empty (glueN n push (hoist lift e
 -- 3
 -- 4
 glueN :: Monad m => Int -> Committer m a -> Emitter m a -> m ()
-glueN n c e = flip evalStateT 0 $ glue (hoist lift c) (takeE n e)
+glueN n c e = flip evalStateT 0 $ glue (foist lift c) (takeE n e)
 
 -- | take a list, emit it through a box, and output the committed result.
 --
@@ -105,16 +99,8 @@ fromToList_ :: (Monad m) => [a] -> (Box (StateT (Seq.Seq b, Seq.Seq a) m) b a ->
 fromToList_ xs f = do
   (res, _) <-
     flip execStateT (Seq.empty, Seq.fromList xs) $
-      f (Box (hoist (zoom _1) push) (hoist (zoom _2) pop))
+      f (Box (foist (zoom _1) push) (foist (zoom _2) pop))
   pure $ toList res
-
--- | hook a committer action to a queue, creating an emitter continuation
-emitQ :: (MonadConc m) => (Committer m a -> m r) -> CoEmitter m a
-emitQ cio = Codensity $ \eio -> queueE cio eio
-
--- | hook a committer action to a queue, creating an emitter continuation
-commitQ :: (MonadConc m) => (Emitter m a -> m r) -> CoCommitter m a
-commitQ eio = Codensity $ \cio -> queueC cio eio
 
 -- | singleton sink
 sink1 :: (Monad m) => (a -> m ()) -> Emitter m a -> m ()
@@ -126,7 +112,7 @@ sink1 f e = do
 
 -- | finite sink
 sink :: (MonadConc m) => Int -> (a -> m ()) -> CoCommitter m a
-sink n f = commitQ $ replicateM_ n . sink1 f
+sink n f = commitQ Unbounded $ replicateM_ n . sink1 f
 
 -- | singleton source
 source1 :: (Monad m) => m a -> Committer m a -> m ()
@@ -136,7 +122,7 @@ source1 a c = do
 
 -- | finite source
 source :: (MonadConc m) => Int -> m a -> CoEmitter m a
-source n f = emitQ $ replicateM_ n . source1 f
+source n f = emitQ Unbounded $ replicateM_ n . source1 f
 
 -- | glues an emitter to a committer, then resupplies the emitter
 forkEmit :: (Monad m) => Emitter m a -> Committer m a -> Emitter m a
@@ -148,43 +134,60 @@ forkEmit e c =
 
 -- | queue a committer
 queueCommitter :: (MonadConc m) => Committer m a -> CoCommitter m a
-queueCommitter c = Codensity $ \caction -> queueC caction (glue c)
+queueCommitter c = Codensity $ \caction -> queueL Unbounded caction (glue c)
 
 -- | queue an emitter
 queueEmitter :: (MonadConc m) => Emitter m a -> CoEmitter m a
-queueEmitter e = Codensity $ \eaction -> queueE (`glue` e) eaction
+queueEmitter e = Codensity $ \eaction -> queueR Unbounded (`glue` e) eaction
 
 -- | concurrently run two emitters
 --
--- This differs from mappend in that the monoidal (and alternative) instance of an Emitter is left-biased (The left emitter exhausts before the right one is begun). This is non-deterministically concurrent.
-concurrentE ::
-  (MonadConc m) =>
-  Emitter m a ->
-  Emitter m a ->
-  CoEmitter m a
-concurrentE e e' =
-  Codensity $ \eaction ->
-    fst
-      <$> C.concurrently
-        (queueE (`glue` e) eaction)
-        (queueE (`glue` e') eaction)
+-- This differs to (<>), which is left-biased.
+--
+-- Note that functions such as toListM, which complete on the first Nothing emitted, will not work as expected.
+--
+-- >>> close $ (fmap toListM) (join $ concurrentE Single <$> qList [1..3] <*> qList [5..9])
+-- [1,2,3]
+--
+-- In the code below, the ordering is non-deterministic.
+--
+-- > (c,l) <- cRef :: IO (Committer IO Int, IO [Int])
+-- > close $ glue c <$> (join $ concurrentE Single <$> qList [1..30] <*> qList [40..60])
+--
+concurrentE :: MonadConc f =>
+  Queue a -> Emitter f a -> Emitter f a -> CoEmitter f a
+concurrentE q e e' =
+  Codensity $ \eaction -> snd . fst <$> C.concurrently (queue q (`glue` e) eaction) (queue q (`glue` e') eaction)
 
 -- | run two committers concurrently
-concurrentC :: (MonadConc m) => Committer m a -> Committer m a -> CoCommitter m a
-concurrentC c c' = mergeC <$> eitherC c c'
+--
+-- >>> import Data.Functor.Contravariant
+-- >>> import Data.Text (pack)
+-- >>> cFast = mapC (\b -> pure (Just b)) . contramap ("fast: " <>) $ toStdout
+-- >>> cSlow = mapC (\b -> sleep 0.1 >> pure (Just b)) . contramap ("slow: " <>) $ toStdout
+-- >>> close $ (popList ((pack . show) <$> [1..3]) <$> (concurrentC Unbounded cFast cSlow)) <> pure (sleep 1)
+-- fast: 1
+-- fast: 2
+-- fast: 3
+-- slow: 1
+-- slow: 2
+-- slow: 3
+concurrentC :: (MonadConc m) => Queue a -> Committer m a -> Committer m a -> CoCommitter m a
+concurrentC q c c' = mergeC <$> eitherC q c c'
 
 eitherC ::
   (MonadConc m) =>
+  Queue a ->
   Committer m a ->
   Committer m a ->
   Codensity m (Either (Committer m a) (Committer m a))
-eitherC cl cr =
+eitherC q cl cr =
   Codensity $
     \kk ->
       fst
         <$> C.concurrently
-          (queueC (kk . Left) (glue cl))
-          (queueC (kk . Right) (glue cr))
+          (queueL q (kk . Left) (glue cl))
+          (queueL q (kk . Right) (glue cr))
 
 mergeC :: Either (Committer m a) (Committer m a) -> Committer m a
 mergeC ec =

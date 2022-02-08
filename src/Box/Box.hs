@@ -14,18 +14,13 @@ module Box.Box
     CoBox,
     CoBoxM (..),
     bmap,
-    hoistb,
+    foistb,
     glue,
-    glue',
-    glue_,
-    glueb,
     fuse,
-    dotb,
-    dotco,
     Divap (..),
     DecAlt (..),
-    stateB,
     cobox,
+    seqBox,
   )
 where
 
@@ -35,8 +30,6 @@ import Control.Applicative
   ( Alternative (empty, (<|>)),
     Applicative (liftA2),
   )
-import Control.Monad.Morph (MFunctor (hoist))
-import Data.Functor (($>))
 import Data.Functor.Contravariant (Contravariant (contramap))
 import Data.Functor.Contravariant.Divisible
   ( Decidable (choose, lose),
@@ -51,19 +44,19 @@ import Control.Monad.State.Lazy
 import qualified Data.Sequence as Seq
 import Data.Bool
 import Data.Semigroupoid
+import Box.Functor
 
 -- | A Box is a product of a Committer m and an Emitter. Think of a box with an incoming wire and an outgoing wire. Now notice that the abstraction is reversable: are you looking at two wires from "inside a box"; a blind erlang grunt communicating with the outside world via the two thin wires, or are you looking from "outside the box"; interacting with a black box object. Either way, it's a box.
 -- And either way, the committer is contravariant and the emitter covariant so it forms a profunctor.
 --
--- a Box can also be seen as having an input tape and output tape, thus available for turing and finite-state machine metaphorics.
 data Box m c e = Box
   { committer :: Committer m c,
     emitter :: Emitter m e
   }
 
--- | Wrong signature for the MFunctor class
-hoistb :: Monad m => (forall a. m a -> n a) -> Box m c e -> Box n c e
-hoistb nat (Box c e) = Box (hoist nat c) (hoist nat e)
+-- | Wrong kind signature for the FFunctor class
+foistb :: (forall a. m a -> n a) -> Box m c e -> Box n c e
+foistb nat (Box c e) = Box (foist nat c) (foist nat e)
 
 instance (Functor m) => Profunctor (Box m) where
   dimap f g (Box c e) = Box (contramap f c) (fmap g e)
@@ -79,47 +72,15 @@ instance (Alternative m, Monad m) => Monoid (Box m c e) where
 bmap :: (Monad m) => (a' -> m (Maybe a)) -> (b -> m (Maybe b')) -> Box m a b -> Box m a' b'
 bmap fc fe (Box c e) = Box (mapC fc c) (mapE fe e)
 
--- | composition of monadic boxes
-dotb :: (Monad m) => Box m a b -> Box m b c -> m (Box m a c)
-dotb (Box c e) (Box c' e') = glue c' e $> Box c e'
-
-
 -- | Connect an emitter directly to a committer of the same type.
 --
 -- The monadic action returns when the committer finishes.
 glue :: (Monad m) => Committer m a -> Emitter m a -> m ()
-glue c e = go
-  where
-    go = do
-      a <- emit e
-      c' <- maybe (pure False) (commit c) a
-      when c' go
-
--- | Connect an emitter directly to a committer of the same type.
---
--- The monadic action returns if the committer returns False.
-glue_ :: (Monad m) => Committer m a -> Emitter m a -> m ()
-glue_ c e = go
-  where
-    go = do
-      a <- emit e
-      case a of
-        Nothing -> go
-        Just a' -> do
-          b <- commit c a'
-          bool (pure ()) go b
-
--- | Short-circuit a homophonuous box.
-glueb :: (Monad m) => Box m a a -> m ()
-glueb (Box c e) = glue c e
-
-glue' :: (Monad m) => Committer m a -> Emitter m a -> m ()
-glue' c e = fix $ \rec -> emit e >>= maybe (pure False) (commit c) >>= bool (pure ()) rec
-
+glue c e = fix $ \rec -> emit e >>= maybe (pure False) (commit c) >>= bool (pure ()) rec
 
 -- | fuse a box
 --
--- > fuse (pure . pure) == glueb
+-- > fuse (pure . pure) == \(Box c e) -> glue c e
 fuse :: (Monad m) => (a -> m (Maybe b)) -> Box m b a -> m ()
 fuse f (Box c e) = glue c (mapE f e)
 
@@ -149,8 +110,8 @@ type CoBox m a b = Codensity m (Box m a b)
 cobox :: CoCommitter m a -> CoEmitter m b -> CoBox m a b
 cobox c e = Box <$> c <*> e
 
-stateB :: (Monad m) => Box (StateT (Seq.Seq a) m) a a
-stateB = Box push pop
+seqBox :: (Monad m) => Box (StateT (Seq.Seq a) m) a a
+seqBox = Box push pop
 
 -- | cps composition of monadic boxes
 dotco :: Monad m => Codensity m (Box m a b) -> Codensity m (Box m b c) -> Codensity m (Box m a c)

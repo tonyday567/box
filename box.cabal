@@ -27,6 +27,7 @@ library
     Box.Connectors
     Box.Cont
     Box.Emitter
+    Box.Functor
     Box.IO
     Box.Queue
     Box.Time
@@ -47,7 +48,6 @@ library
     , contravariant  ^>=1.5
     , exceptions     ^>=0.10
     , lens           ^>=5.0
-    , mmorph         ^>=1.2
     , mtl            ^>=2.2.2
     , profunctors    ^>=5.6
     , text           ^>=1.2

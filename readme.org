@@ -119,10 +119,19 @@ This is how we can use a profunctor to glue together two categories ~ Milewski
 
 ~glue~ glues together a Committer and Emitter. Once glued, it will be difficult to tear them apart again. It can probably be done but will be messy.
 
+
+Non-fix version of glue:
+
 #+begin_src haskell
-glue c e == glueb (Box c e)
-glueb == fuse (pure . pure)
+glue' :: (Monad m) => Committer m a -> Emitter m a -> m ()
+glue' c e = go
+  where
+    go = do
+      a <- emit e
+      c' <- maybe (pure False) (commit c) a
+      when c' go
 #+end_src
+
 
 * coding points
 
@@ -195,7 +204,7 @@ Use mapC to modify a Committer and introduce effects.
 
 #+begin_src haskell
 let c = mapC (\a -> if a==2 then (sleep 0.1 >> putStrLn "stole a 2!" >> sleep 0.1 >> pure (Nothing)) else (pure (Just a))) (contramap (pack . show) toStdout)
-glueb <$|> (Box <$> pure c <*> qList [1..3])
+glue c <$|> qList [1..3]
 #+end_src
 
 #+RESULTS:
@@ -208,7 +217,7 @@ The monoid instance of Committer sends each commit to both mappended committers.
 #+begin_src haskell :results output
 let cFast = mapC (\b -> pure (Just b)) . contramap ("fast: " <>) $ toStdout
 let cSlow = mapC (\b -> sleep 0.1 >> pure (Just b)) . contramap ("slow: " <>) $ toStdout
-(glueb <$|> (Box <$> pure (cFast <> cSlow) <*> qList ((pack . show) <$> [1..3]))) <* sleep 1
+glue (cFast <> cSlow) <$|> qList ((pack . show) <$> [1..3]))) <* sleep 1
 #+end_src
 
 #+RESULTS:
@@ -327,3 +336,63 @@ glueN 4 <$> pure (contramap (pack . show) toStdout) <*|> qList [1..]
 : 2
 : 3
 : 4
+
+* types
+
+If a Box is restricted to be Homo ...
+
+#+begin_src haskell
+data BoxH m a = BoxH
+  { committerH :: Committer m a,
+    emitterH :: Emitter m a
+  }
+
+instance FFunctor BoxH
+  where
+    foist nat (BoxH c e) = BoxH (foist nat c) (foist nat e)
+#+end_src
+
+
+* toListM
+
+Version of toListM that doesn't go through FoldableM
+
+#+begin_src haskell
+-- | Collect emitter emits into a list.
+toListM :: Monad m => Emitter m a -> m [a]
+toListM e =
+  D.toList <$>
+  fix (\ rec xs -> emit e >>= maybe (pure xs) (rec . D.snoc xs)) D.empty
+#+end_src
+
+* debugging
+
+#+begin_src haskell
+logE ::
+  (Show a) =>
+  Emitter IO a ->
+  Emitter IO a
+logE e = Emitter $ do
+  r <- emit e
+  print r
+  pure r
+
+logEAction ::
+  (Show a) =>
+  (Emitter IO a -> IO r) ->
+  (Emitter IO a -> IO r)
+logEAction eaction = \e -> eaction (logE e)
+
+-- | create an unbounded queue, returning both results
+queueIO ::
+  (Show a) =>
+  (Committer IO a -> IO l) ->
+  (Emitter IO a -> IO r) ->
+  IO (l, r)
+queueIO cm em = withQ Unbounded toBoxM cm (logEAction em)
+
+concurrentELog :: Show a =>
+  Emitter IO a -> Emitter IO a -> Codensity IO (Emitter IO a)
+concurrentELog e e' =
+  Codensity $ \eaction -> snd . fst <$> C.concurrently (queueIO (`glue` e) eaction) (queueIO (`glue` e') eaction)
+#+end_src

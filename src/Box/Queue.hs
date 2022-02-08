@@ -13,19 +13,12 @@
 -- Follows [pipes-concurrency](https://hackage.haskell.org/package/pipes-concurrency)
 module Box.Queue
   ( Queue (..),
-    queueC,
-    queueE,
-    waitCancel,
-    ends,
-    withQE,
-    withQC,
-    toBox,
-    toBoxM,
-    liftB,
-    concurrentlyLeft,
-    concurrentlyRight,
+    queueL,
+    queueR,
+    queue,
     fromAction,
-    fuseActions,
+    emitQ,
+    commitQ,
   )
 where
 
@@ -38,8 +31,8 @@ import Control.Concurrent.Classy.Async as C
 import Control.Concurrent.Classy.STM as C
 import Control.Monad.Catch as C
 import Control.Monad.Conc.Class as C
-import Control.Monad.Morph
 import Prelude
+import Box.Functor
 
 -- | 'Queue' specifies how messages are queued
 data Queue a
@@ -95,11 +88,11 @@ readCheck sealed o =
         )
 
 -- | turn a queue into a box (and a seal)
-toBox ::
+toBoxSTM ::
   (MonadSTM stm) =>
   Queue a ->
   stm (Box stm a a, stm ())
-toBox q = do
+toBoxSTM q = do
   (i, o) <- ends q
   sealed <- newTVarN "sealed" False
   let seal = writeTVar sealed True
@@ -116,17 +109,8 @@ toBoxM ::
   Queue a ->
   m (Box m a a, m ())
 toBoxM q = do
-  (b, s) <- atomically $ toBox q
+  (b, s) <- atomically $ toBoxSTM q
   pure (liftB b, atomically s)
-
--- | wait for the first action, and then cancel the second
-waitCancel :: (MonadConc m) => m b -> m a -> m b
-waitCancel a b =
-  C.withAsync a $ \a' ->
-    C.withAsync b $ \b' -> do
-      a'' <- C.wait a'
-      C.cancel b'
-      pure a''
 
 -- | run two actions concurrently, but wait and return on the left result.
 concurrentlyLeft :: MonadConc m => m a -> m b -> m a
@@ -142,15 +126,15 @@ concurrentlyRight left right =
     C.withAsync right $ \b ->
       C.wait b
 
--- | connect a committer and emitter action via spawning a queue, and wait for both to complete.
-withQC ::
+-- | connect a committer and emitter action via spawning a queue, and wait for the Committer action to complete.
+withQL ::
   (MonadConc m) =>
   Queue a ->
   (Queue a -> m (Box m a a, m ())) ->
   (Committer m a -> m l) ->
   (Emitter m a -> m r) ->
   m l
-withQC q spawner cio eio =
+withQL q spawner cio eio =
   C.bracket
     (spawner q)
     snd
@@ -160,15 +144,15 @@ withQC q spawner cio eio =
           (eio (emitter box) `C.finally` seal)
     )
 
--- | connect a committer and emitter action via spawning a queue, and wait for both to complete.
-withQE ::
+-- | connect a committer and emitter action via spawning a queue, and wait for the Emitter action to complete.
+withQR ::
   (MonadConc m) =>
   Queue a ->
   (Queue a -> m (Box m a a, m ())) ->
   (Committer m a -> m l) ->
   (Emitter m a -> m r) ->
   m r
-withQE q spawner cio eio =
+withQR q spawner cio eio =
   C.bracket
     (spawner q)
     snd
@@ -178,25 +162,54 @@ withQE q spawner cio eio =
           (eio (emitter box) `C.finally` seal)
     )
 
--- | create an unbounded queue, returning the emitter result
-queueC ::
+-- | connect a committer and emitter action via spawning a queue, and wait for both to complete.
+withQ ::
   (MonadConc m) =>
+  Queue a ->
+  (Queue a -> m (Box m a a, m ())) ->
+  (Committer m a -> m l) ->
+  (Emitter m a -> m r) ->
+  m (l,r)
+withQ q spawner cio eio =
+  C.bracket
+    (spawner q)
+    snd
+    ( \(box, seal) ->
+        concurrently
+          (cio (committer box) `C.finally` seal)
+          (eio (emitter box) `C.finally` seal)
+    )
+
+-- | create an unbounded queue, returning the Committer action result
+queueL ::
+  (MonadConc m) =>
+  Queue a ->
   (Committer m a -> m l) ->
   (Emitter m a -> m r) ->
   m l
-queueC cm em = withQC Unbounded toBoxM cm em
+queueL q cm em = withQL q toBoxM cm em
 
 -- | create an unbounded queue, returning the emitter result
-queueE ::
+queueR ::
   (MonadConc m) =>
+  Queue a ->
   (Committer m a -> m l) ->
   (Emitter m a -> m r) ->
   m r
-queueE cm em = withQE Unbounded toBoxM cm em
+queueR q cm em = withQR q toBoxM cm em
+
+-- | create an unbounded queue, returning both results
+queue ::
+  (MonadConc m) =>
+  Queue a ->
+  (Committer m a -> m l) ->
+  (Emitter m a -> m r) ->
+  m (l, r)
+queue q cm em = withQ q toBoxM cm em
 
 -- | lift a box from STM
 liftB :: (MonadConc m) => Box (STM m) a b -> Box m a b
-liftB (Box c e) = Box (hoist atomically c) (hoist atomically e)
+liftB (Box c e) = Box (foist atomically c) (foist atomically e)
 
 -- | turn a box action into a box continuation
 fromAction :: (MonadConc m) => (Box m a b -> m r) -> CoBox m b a
@@ -208,3 +221,11 @@ fuseActions abm bam = do
   (Box ca ea, _) <- toBoxM Unbounded
   (Box cb eb, _) <- toBoxM Unbounded
   concurrentlyRight (abm (Box ca eb)) (bam (Box cb ea))
+
+-- | hook a committer action to a queue, creating an emitter continuation
+emitQ :: (MonadConc m) => Queue a -> (Committer m a -> m r) -> CoEmitter m a
+emitQ q cio = Codensity $ \eio -> queueR q cio eio
+
+-- | hook a committer action to a queue, creating an emitter continuation
+commitQ :: (MonadConc m) => Queue a -> (Emitter m a -> m r) -> CoCommitter m a
+commitQ q eio = Codensity $ \cio -> queueL q cio eio
