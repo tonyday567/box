@@ -29,7 +29,6 @@ import Box.Codensity
 import Box.Emitter
 import Box.Queue
 import Control.Concurrent.Classy.Async as C
-import Control.Lens
 import Control.Monad.Conc.Class (MonadConc)
 import Control.Monad.State.Lazy
 import Data.Foldable

@@ -46,7 +46,6 @@ library
     , containers     ^>=0.6
     , contravariant  ^>=1.5
     , exceptions     ^>=0.10
-    , lens           ^>=5.0
     , mtl            ^>=2.2.2
     , profunctors    ^>=5.6
     , text           ^>=1.2

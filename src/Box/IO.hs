@@ -32,7 +32,6 @@ import Box.Codensity
 import Box.Emitter
 import qualified Control.Concurrent.Classy.IORef as C
 import Control.Exception
-import Control.Lens hiding ((.>), (:>), (<|), (|>))
 import qualified Control.Monad.Conc.Class as C
 import Data.Bool
 import Data.Foldable
@@ -41,6 +40,7 @@ import Data.Text as Text
 import Data.Text.IO as Text
 import System.IO as IO
 import Prelude
+import Data.Functor.Contravariant
 
 -- $setup
 -- >>> :set -XOverloadedStrings
