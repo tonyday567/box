@@ -1,8 +1,8 @@
 cabal-version:      2.4
 name:               box
-version:            0.7.0
+version:            0.8.0
 synopsis:           boxes
-description:        concurrent, effectful boxes
+description:        A profunctor effect
 category:           project
 homepage:           https://github.com/tonyday567/box#readme
 bug-reports:        https://github.com/tonyday567/box/issues
@@ -23,10 +23,11 @@ library
   exposed-modules:
     Box
     Box.Box
+    Box.Codensity
     Box.Committer
     Box.Connectors
-    Box.Cont
     Box.Emitter
+    Box.Functor
     Box.IO
     Box.Queue
     Box.Time
@@ -40,18 +41,18 @@ library
     -Wunused-packages
 
   build-depends:
-    , attoparsec     ^>=0.14
     , base           >=4.7   && <5
     , concurrency    ^>=1.11
     , containers     ^>=0.6
     , contravariant  ^>=1.5
     , exceptions     ^>=0.10
-    , lens           ^>=5.0
-    , mmorph         ^>=1.2
     , mtl            ^>=2.2.2
     , profunctors    ^>=5.6
     , text           ^>=1.2
     , time           ^>=1.9
     , transformers   ^>=0.5
+    , kan-extensions ^>=5.2
+    , semigroupoids  ^>=5.3
+    , dlist          ^>=1.0
 
   default-language:   Haskell2010

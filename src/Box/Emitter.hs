@@ -7,46 +7,58 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wall #-}
 {-# OPTIONS_GHC -fno-warn-type-defaults #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
 
 -- | `emit`
 module Box.Emitter
   ( Emitter (..),
-    mapE,
+    type CoEmitter,
+    toListM,
+    witherE,
     readE,
-    readE_,
-    parseE,
-    parseE_,
-    premapE,
-    postmapE,
-    postmapM,
-    toListE,
     unlistE,
-    stateE,
     takeE,
     takeUntilE,
-    filterE,
-  )
+    pop,
+)
 where
 
 import Control.Applicative
-import Control.Monad.Morph
 import Control.Monad.State.Lazy
-import qualified Data.Attoparsec.Text as A
 import Data.Bool
-import Data.Foldable
-import qualified Data.Sequence as Seq
 import Data.Text (Text, pack, unpack)
 import Prelude
+import Control.Monad.Codensity
+import Box.Functor
+import qualified Data.Sequence as Seq
+import qualified Data.DList as D
 
--- | an `Emitter` "emits" values of type a. A Source & a Producer (of a's) are the two other alternative but overloaded metaphors out there.
+-- $setup
+-- >>> :set -XOverloadedStrings
+-- >>> import Prelude
+-- >>> import Box
+-- >>> import Data.Bool
+-- >>> import Data.Text (Text)
+
+-- | an `Emitter` `emit`s values of type Maybe a. Source & Producer are also appropriate metaphors.
 --
--- An Emitter "reaches into itself" for the value to emit, where itself is an opaque thing from the pov of usage.  An Emitter is named for its main action: it emits.
+-- An Emitter reaches into itself for the value to emit, where itself is an opaque thing from the pov of usage.
+--
+-- >>> e = Emitter (pure (Just "I'm emitted"))
+-- >>> emit e
+-- Just "I'm emitted"
+--
+-- >>> emit mempty
+-- Nothing
 newtype Emitter m a = Emitter
   { emit :: m (Maybe a)
   }
 
-instance MFunctor Emitter where
-  hoist nat (Emitter e) = Emitter (nat e)
+-- | An 'Emitter' continuation.
+type CoEmitter m a = Codensity m (Emitter m a)
+
+instance FFunctor Emitter where
+  foist nat (Emitter e) = Emitter (nat e)
 
 instance (Functor m) => Functor (Emitter m) where
   fmap f m = Emitter (fmap (fmap f) (emit m))
@@ -76,6 +88,9 @@ instance (Monad m, Alternative m) => Alternative (Emitter m) where
         Nothing -> emit i
         Just a -> pure (Just a)
 
+  -- | Zero or more.
+  many e = Emitter $ Just <$> toListM e
+
 instance (Alternative m, Monad m) => MonadPlus (Emitter m) where
   mzero = empty
 
@@ -89,9 +104,27 @@ instance (Alternative m, Monad m) => Monoid (Emitter m a) where
 
   mappend = (<>)
 
--- | like a monadic mapMaybe. (See [witherable](https://hackage.haskell.org/package/witherable))
-mapE :: (Monad m) => (a -> m (Maybe b)) -> Emitter m a -> Emitter m b
-mapE f e = Emitter go
+
+-- | This fold completes on the first Nothing emitted, which may not be what you want.
+instance FoldableM Emitter where
+  foldrM acc begin e =
+    maybe begin (\a' -> foldrM acc (acc a' begin) e) =<< emit e
+
+-- | Collect emits into a list, and close on the first Nothing.
+--
+-- >>> toListM <$|> qList [1..3]
+-- [1,2,3]
+toListM :: (Monad m) => Emitter m a -> m [a]
+toListM e = D.toList <$> foldrM (\a acc -> fmap (`D.snoc` a) acc) (pure D.empty) e
+
+-- | A monadic [Witherable](https://hackage.haskell.org/package/witherable)
+--
+-- >>> close $ toListM <$> witherE (\x -> bool (print x >> pure Nothing) (pure (Just x)) (even x)) <$> (qList [1..3])
+-- 1
+-- 3
+-- [2]
+witherE :: (Monad m) => (a -> m (Maybe b)) -> Emitter m a -> Emitter m b
+witherE f e = Emitter go
   where
     go = do
       a <- emit e
@@ -103,15 +136,10 @@ mapE f e = Emitter go
             Nothing -> go
             Just fa' -> pure (Just fa')
 
--- | parse emitter which returns the original text on failure
-parseE :: (Functor m) => A.Parser a -> Emitter m Text -> Emitter m (Either Text a)
-parseE parser e = (\t -> either (const $ Left t) Right (A.parseOnly parser t)) <$> e
-
--- | no error-reporting parsing
-parseE_ :: (Monad m) => A.Parser a -> Emitter m Text -> Emitter m a
-parseE_ parser = mapE (pure . either (const Nothing) Just) . parseE parser
-
--- | read parse emitter, returning the original string on error
+-- | Read parse 'Emitter', returning the original text on error
+--
+-- >>> process (toListM . readE) (qList ["1","2","3","four"]) :: IO [Either Text Int]
+-- [Right 1,Right 2,Right 3,Left "four"]
 readE ::
   (Functor m, Read a) =>
   Emitter m Text ->
@@ -123,97 +151,42 @@ readE = fmap $ parsed . unpack
         [(a, "")] -> Right a
         _err -> Left (pack str)
 
--- | no error-reporting reading
-readE_ ::
-  (Monad m, Read a) =>
-  Emitter m Text ->
-  Emitter m a
-readE_ = mapE (pure . either (const Nothing) Just) . readE
-
--- | adds a pre-emit monadic action to the emitter
-premapE ::
-  (Applicative m) =>
-  (Emitter m a -> m ()) ->
-  Emitter m a ->
-  Emitter m a
-premapE f e = Emitter $ f e *> emit e
-
--- | adds a post-emit monadic action to the emitter
-postmapE ::
-  (Monad m) =>
-  (Emitter m a -> m ()) ->
-  Emitter m a ->
-  Emitter m a
-postmapE f e = Emitter $ do
-  r <- emit e
-  f e
-  pure r
-
--- | add a post-emit monadic action on the emitted value (if there was any)
-postmapM ::
-  (Monad m) =>
-  (a -> m ()) ->
-  Emitter m a ->
-  Emitter m a
-postmapM f e = Emitter $ do
-  r <- emit e
-  case r of
-    Nothing -> pure Nothing
-    Just r' -> do
-      f r'
-      pure (Just r')
-
--- | turn an emitter into a list
-toListE :: (Monad m) => Emitter m a -> m [a]
-toListE e = go Seq.empty e
-  where
-    go xs e' = do
-      x <- emit e'
-      case x of
-        Nothing -> pure (toList xs)
-        Just x' -> go (xs Seq.:|> x') e'
-
--- | emit from a StateT Seq
+-- | Convert a list emitter to a (Stateful) element emitter.
 --
--- FIXME: This compiles but is an infinite "a" emitter:
---
--- let e1 = hoist (flip evalStateT (Seq.fromList ["a", "b"::Text])) stateE :: Emitter IO Text
-stateE :: (Monad m) => Emitter (StateT (Seq.Seq a) m) a
-stateE = Emitter $ do
-  xs' <- get
-  case xs' of
-    Seq.Empty -> pure Nothing
-    (x Seq.:<| xs'') -> do
-      put xs''
-      pure $ Just x
-
--- | convert a list emitter to a Stateful element emitter
+-- >>> import Control.Monad.State.Lazy
+-- >>> close $ flip runStateT [] . toListM . unlistE <$> (qList [[0..3],[5..7]])
+-- ([0,1,2,3,5,6,7],[])
 unlistE :: (Monad m) => Emitter m [a] -> Emitter (StateT [a] m) a
-unlistE es = mapE unlistS (hoist lift es)
+unlistE es = Emitter unlists
   where
-    unlistS xs = do
-      rs <- get
-      case rs <> xs of
-        [] -> pure Nothing
-        (x : xs') -> do
-          put xs'
-          pure (Just x)
+  -- unlists :: (Monad m) => StateT [a] m (Maybe a)
+  unlists = do
+    rs <- get
+    case rs of
+      [] -> do
+        xs <- lift $ emit es
+        case xs of
+          Nothing -> pure Nothing
+          Just xs' -> do
+            put xs'
+            unlists
+      (x:rs') -> do
+        put rs'
+        pure (Just x)
 
--- | Stop an 'Emitter' after n 'emit's
+-- | Take n emits.
+--
+-- >>> import Control.Monad.State.Lazy
+-- >>> close $ flip evalStateT 0 <$> toListM . takeE 4 <$> qList [0..]
+-- [0,1,2,3]
 takeE :: (Monad m) => Int -> Emitter m a -> Emitter (StateT Int m) a
-takeE n e = Emitter $ do
-  x <- emit (hoist lift e)
-  case x of
-    Nothing -> pure Nothing
-    Just x' -> do
-      n' <- get
-      bool (pure Nothing) (emit' n') (n' < n)
-      where
-        emit' n' = do
-          put (n' + 1)
-          pure $ Just x'
+takeE n (Emitter e) =
+  Emitter $ get >>= \n' -> bool (pure Nothing) (put (n'+1) >> lift e) (n'<n)
 
--- | Take from an emitter until predicate
+-- | Take from an emitter until a predicate.
+--
+-- >>> process (toListM . takeUntilE (==3)) (qList [0..])
+-- [0,1,2]
 takeUntilE :: (Monad m) => (a -> Bool) -> Emitter m a -> Emitter m a
 takeUntilE p e = Emitter $ do
   x <- emit e
@@ -222,13 +195,17 @@ takeUntilE p e = Emitter $ do
     Just x' ->
       bool (pure (Just x')) (pure Nothing) (p x')
 
--- | Filter emissions according to a predicate.
-filterE :: (Monad m) => (a -> Bool) -> Emitter m a -> Emitter m a
-filterE p e = Emitter go
-  where
-    go = do
-      x <- emit e
-      case x of
-        Nothing -> pure Nothing
-        Just x' ->
-          bool go (pure (Just x')) (p x')
+-- | Pop from a State sequence.
+--
+-- >>> import qualified Data.Sequence as Seq
+-- >>> import Control.Monad.State.Lazy (evalStateT)
+-- >>> flip evalStateT (Seq.fromList [1..3]) $ toListM pop
+-- [1,2,3]
+pop :: (Monad m) => Emitter (StateT (Seq.Seq a) m) a
+pop = Emitter $ do
+  xs <- get
+  case xs of
+    Seq.Empty -> pure Nothing
+    (x Seq.:<| xs') -> do
+      put xs'
+      pure (Just x)
