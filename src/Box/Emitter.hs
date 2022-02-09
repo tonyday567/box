@@ -1,3 +1,4 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -7,7 +8,6 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wall #-}
 {-# OPTIONS_GHC -fno-warn-type-defaults #-}
-{-# LANGUAGE AllowAmbiguousTypes #-}
 
 -- | `emit`
 module Box.Emitter
@@ -20,18 +20,18 @@ module Box.Emitter
     takeE,
     takeUntilE,
     pop,
-)
+  )
 where
 
+import Box.Functor
 import Control.Applicative
+import Control.Monad.Codensity
 import Control.Monad.State.Lazy
 import Data.Bool
+import qualified Data.DList as D
+import qualified Data.Sequence as Seq
 import Data.Text (Text, pack, unpack)
 import Prelude
-import Control.Monad.Codensity
-import Box.Functor
-import qualified Data.Sequence as Seq
-import qualified Data.DList as D
 
 -- $setup
 -- >>> :set -XOverloadedStrings
@@ -88,7 +88,7 @@ instance (Monad m, Alternative m) => Alternative (Emitter m) where
         Nothing -> emit i
         Just a -> pure (Just a)
 
-  -- | Zero or more.
+  -- Zero or more.
   many e = Emitter $ Just <$> toListM e
 
 instance (Alternative m, Monad m) => MonadPlus (Emitter m) where
@@ -103,7 +103,6 @@ instance (Alternative m, Monad m) => Monoid (Emitter m a) where
   mempty = empty
 
   mappend = (<>)
-
 
 -- | This fold completes on the first Nothing emitted, which may not be what you want.
 instance FoldableM Emitter where
@@ -159,20 +158,20 @@ readE = fmap $ parsed . unpack
 unlistE :: (Monad m) => Emitter m [a] -> Emitter (StateT [a] m) a
 unlistE es = Emitter unlists
   where
-  -- unlists :: (Monad m) => StateT [a] m (Maybe a)
-  unlists = do
-    rs <- get
-    case rs of
-      [] -> do
-        xs <- lift $ emit es
-        case xs of
-          Nothing -> pure Nothing
-          Just xs' -> do
-            put xs'
-            unlists
-      (x:rs') -> do
-        put rs'
-        pure (Just x)
+    -- unlists :: (Monad m) => StateT [a] m (Maybe a)
+    unlists = do
+      rs <- get
+      case rs of
+        [] -> do
+          xs <- lift $ emit es
+          case xs of
+            Nothing -> pure Nothing
+            Just xs' -> do
+              put xs'
+              unlists
+        (x : rs') -> do
+          put rs'
+          pure (Just x)
 
 -- | Take n emits.
 --
@@ -181,7 +180,7 @@ unlistE es = Emitter unlists
 -- [0,1,2,3]
 takeE :: (Monad m) => Int -> Emitter m a -> Emitter (StateT Int m) a
 takeE n (Emitter e) =
-  Emitter $ get >>= \n' -> bool (pure Nothing) (put (n'+1) >> lift e) (n'<n)
+  Emitter $ get >>= \n' -> bool (pure Nothing) (put (n' + 1) >> lift e) (n' < n)
 
 -- | Take from an emitter until a predicate.
 --

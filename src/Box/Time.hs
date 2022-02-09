@@ -20,12 +20,12 @@ where
 
 import Box.Codensity
 import Box.Emitter
+import Control.Applicative
 import Control.Monad.Conc.Class as C
 import Control.Monad.IO.Class
 import Data.Fixed (Fixed (MkFixed))
 import Data.Time
 import Prelude
-import Control.Applicative
 
 -- $setup
 -- >>> :set -XOverloadedStrings

@@ -1,17 +1,18 @@
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE AllowAmbiguousTypes #-}
--- |
+{-# LANGUAGE RankNTypes #-}
+
+--
 
 module Box.Functor
-  (
-    FFunctor (..),
+  ( FFunctor (..),
     FoldableM (..),
-  ) where
+  )
+where
 
-import Prelude
 import Data.Kind
+import Prelude
 
 -- | An endofunctor in the category of endofunctors.
 --

@@ -18,14 +18,14 @@ module Box.Committer
   )
 where
 
+import Box.Codensity (Codensity)
+import Box.Functor
 import Control.Monad.State.Lazy
 import Data.Functor.Contravariant
 import Data.Functor.Contravariant.Divisible
 import qualified Data.Sequence as Seq
 import Data.Void
 import Prelude
-import Box.Codensity (Codensity)
-import Box.Functor
 
 -- $setup
 -- >>> :set -XOverloadedStrings
@@ -40,7 +40,6 @@ import Box.Functor
 -- >>> commit toStdout "I'm committed!"
 -- I'm committed!
 -- True
---
 newtype Committer m a = Committer
   { commit :: a -> m Bool
   }

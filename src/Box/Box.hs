@@ -25,26 +25,26 @@ module Box.Box
   )
 where
 
+import Box.Codensity
 import Box.Committer
 import Box.Emitter
+import Box.Functor
 import Control.Applicative
   ( Alternative (empty, (<|>)),
     Applicative (liftA2),
   )
+import Control.Monad.State.Lazy
+import Data.Bool
 import Data.Functor.Contravariant (Contravariant (contramap))
 import Data.Functor.Contravariant.Divisible
   ( Decidable (choose, lose),
     Divisible (conquer, divide),
   )
 import Data.Profunctor (Profunctor (dimap))
-import Data.Void (Void, absurd)
-import Prelude hiding ((.), id)
-import Box.Codensity
-import Control.Monad.State.Lazy
-import qualified Data.Sequence as Seq
-import Data.Bool
 import Data.Semigroupoid
-import Box.Functor
+import qualified Data.Sequence as Seq
+import Data.Void (Void, absurd)
+import Prelude hiding (id, (.))
 
 -- $setup
 -- >>> :set -XOverloadedStrings
@@ -58,7 +58,6 @@ import Box.Functor
 -- Think of a box with an incoming arrow an outgoing arrow. And then make your pov ambiguous: are you looking at two wires from "inside a box"; or are you looking from "outside the box"; interacting with a black box object. Either way, it looks the same: it's a box.
 --
 -- And either way, one of the arrows, the 'Committer', is contravariant and the other, the 'Emitter' is covariant. The combination is a profunctor.
---
 data Box m c e = Box
   { committer :: Committer m c,
     emitter :: Emitter m e
@@ -103,7 +102,6 @@ glue c e = fix $ \rec -> emit e >>= maybe (pure False) (commit c) >>= bool (pure
 -- >>> glueN 4 (witherC (\x -> bool (pure Nothing) (pure (Just x)) (even x)) showStdout) <$|> qList [0..9]
 -- 0
 -- 2
---
 glueN :: Monad m => Int -> Committer m a -> Emitter m a -> m ()
 glueN n c e = flip evalStateT 0 $ glue (foist lift c) (takeE n e)
 
@@ -114,7 +112,6 @@ glueN n c e = flip evalStateT 0 $ glue (foist lift c) (takeE n e)
 -- A command-line echoer
 --
 -- > fuse (pure . Just . ("echo " <>)) (Box toStdout fromStdin)
---
 fuse :: (Monad m) => (a -> m (Maybe b)) -> Box m b a -> m ()
 fuse f (Box c e) = glue c (witherE f e)
 
@@ -167,7 +164,7 @@ dotco b b' = lift $ do
   pure (Box c e')
 
 -- | Wrapper for the semigroupoid instance of a box continuation.
-newtype CoBoxM m a b = CoBoxM { uncobox :: Codensity m (Box m a b) }
+newtype CoBoxM m a b = CoBoxM {uncobox :: Codensity m (Box m a b)}
 
 instance (Monad m) => Semigroupoid (CoBoxM m) where
-  o (CoBoxM b) (CoBoxM b')= CoBoxM (dotco b' b)
+  o (CoBoxM b) (CoBoxM b') = CoBoxM (dotco b' b)

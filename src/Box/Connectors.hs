@@ -24,9 +24,10 @@ module Box.Connectors
 where
 
 import Box.Box
-import Box.Committer
 import Box.Codensity
+import Box.Committer
 import Box.Emitter
+import Box.Functor
 import Box.Queue
 import Control.Concurrent.Classy.Async as C
 import Control.Monad.Conc.Class (MonadConc)
@@ -34,7 +35,6 @@ import Control.Monad.State.Lazy
 import Data.Foldable
 import qualified Data.Sequence as Seq
 import Prelude
-import Box.Functor
 
 -- $setup
 -- >>> :set -XOverloadedStrings
@@ -47,7 +47,6 @@ import Box.Functor
 --
 -- >>> pushList <$|> qList [1,2,3]
 -- [1,2,3]
---
 qList :: (MonadConc m) => [a] -> CoEmitter m a
 qList xs = emitQ Unbounded (\c -> fmap and (traverse (commit c) xs))
 
@@ -112,7 +111,6 @@ source n f = emitQ Unbounded $ replicateM_ n . source1 f
 --
 -- >>> l1
 -- [1,2,3]
---
 forkEmit :: (Monad m) => Emitter m a -> Committer m a -> Emitter m a
 forkEmit e c =
   Emitter $ do
@@ -141,9 +139,12 @@ bufferEmitter e = Codensity $ \eaction -> queueR Unbounded (`glue` e) eaction
 --
 -- > (c,l) <- refCommitter :: IO (Committer IO Int, IO [Int])
 -- > close $ glue c <$> (join $ concurrentE Single <$> qList [1..30] <*> qList [40..60])
---
-concurrentE :: MonadConc f =>
-  Queue a -> Emitter f a -> Emitter f a -> CoEmitter f a
+concurrentE ::
+  MonadConc f =>
+  Queue a ->
+  Emitter f a ->
+  Emitter f a ->
+  CoEmitter f a
 concurrentE q e e' =
   Codensity $ \eaction -> snd . fst <$> C.concurrently (queue q (`glue` e) eaction) (queue q (`glue` e') eaction)
 

@@ -22,16 +22,16 @@ module Box.Queue
 where
 
 import Box.Box
-import Box.Committer
 import Box.Codensity
+import Box.Committer
 import Box.Emitter
+import Box.Functor
 import Control.Applicative
 import Control.Concurrent.Classy.Async as C
 import Control.Concurrent.Classy.STM as C
 import Control.Monad.Catch as C
 import Control.Monad.Conc.Class as C
 import Prelude
-import Box.Functor
 
 -- $setup
 -- >>> :set -XOverloadedStrings
@@ -62,14 +62,14 @@ ends qu =
       pure (putTMVar m, takeTMVar m)
     Latest a -> do
       t <- newTVar a
-      return (writeTVar t, readTVar t)
+      pure (writeTVar t, readTVar t)
     New -> do
       m <- newEmptyTMVar
-      return (\x -> tryTakeTMVar m *> putTMVar m x, takeTMVar m)
+      pure (\x -> tryTakeTMVar m *> putTMVar m x, takeTMVar m)
     Newest n -> do
       q <- newTBQueue (fromIntegral n)
       let write x = writeTBQueue q x <|> (tryReadTBQueue q *> write x)
-      return (write, readTBQueue q)
+      pure (write, readTBQueue q)
 
 -- | write to a queue, checking the seal
 writeCheck :: (MonadSTM stm) => TVar stm Bool -> (a -> stm ()) -> a -> stm Bool
@@ -173,7 +173,7 @@ withQ ::
   (Queue a -> m (Box m a a, m ())) ->
   (Committer m a -> m l) ->
   (Emitter m a -> m r) ->
-  m (l,r)
+  m (l, r)
 withQ q spawner cio eio =
   C.bracket
     (spawner q)

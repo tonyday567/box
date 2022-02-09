@@ -26,14 +26,14 @@ module Box
 where
 
 import Box.Box
+import Box.Codensity
 import Box.Committer
 import Box.Connectors
-import Box.Codensity
 import Box.Emitter
+import Box.Functor
 import Box.IO
 import Box.Queue
 import Box.Time
-import Box.Functor
 
 -- $setup
 -- >>> :set -XOverloadedStrings

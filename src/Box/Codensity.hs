@@ -62,7 +62,6 @@ infixr 3 <$|>
 (<$|>) :: forall a m r. (a -> m r) -> Codensity m a -> m r
 (<$|>) = process
 
-
 infixr 3 <*|>
 
 -- | apply to a continuation and close.

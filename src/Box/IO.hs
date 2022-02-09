@@ -26,21 +26,21 @@ module Box.IO
   )
 where
 
+import Box.Codensity
 import Box.Committer
 import Box.Connectors
-import Box.Codensity
 import Box.Emitter
 import qualified Control.Concurrent.Classy.IORef as C
 import Control.Exception
 import qualified Control.Monad.Conc.Class as C
 import Data.Bool
 import Data.Foldable
+import Data.Functor.Contravariant
 import qualified Data.Sequence as Seq
 import Data.Text as Text
 import Data.Text.IO as Text
 import System.IO as IO
 import Prelude
-import Data.Functor.Contravariant
 
 -- $setup
 -- >>> :set -XOverloadedStrings
@@ -140,7 +140,6 @@ fileAppendC fp = Codensity $ \cio -> withFile fp AppendMode (cio . handleC)
 -- >>> glue c1 <$|> qList [1..3]
 -- >>> l1
 -- [1,2,3]
---
 refCommitter :: (C.MonadConc m) => m (Committer m a, m [a])
 refCommitter = do
   ref <- C.newIORef Seq.empty
