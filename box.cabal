@@ -12,7 +12,7 @@ copyright:          Tony Day (c) 2017
 license:            BSD-3-Clause
 license-file:       LICENSE
 build-type:         Simple
-tested-with:        GHC ==8.8.4 || ==8.10.4 || ==9.0.1 || ==9.2.0.20210821
+tested-with:        GHC ==8.8.4 || ==8.10.7 || ==9.2.1
 extra-source-files: ChangeLog.md
 
 source-repository head
