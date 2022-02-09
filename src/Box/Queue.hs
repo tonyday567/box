@@ -9,8 +9,7 @@
 {-# OPTIONS_GHC -Wall #-}
 {-# OPTIONS_GHC -fno-warn-type-defaults #-}
 
--- | queues
--- Follows [pipes-concurrency](https://hackage.haskell.org/package/pipes-concurrency)
+-- | STM Queues, based originally on [pipes-concurrency](https://hackage.haskell.org/package/pipes-concurrency)
 module Box.Queue
   ( Queue (..),
     queueL,
@@ -24,7 +23,7 @@ where
 
 import Box.Box
 import Box.Committer
-import Box.Cont
+import Box.Codensity
 import Box.Emitter
 import Control.Applicative
 import Control.Concurrent.Classy.Async as C
@@ -33,6 +32,11 @@ import Control.Monad.Catch as C
 import Control.Monad.Conc.Class as C
 import Prelude
 import Box.Functor
+
+-- $setup
+-- >>> :set -XOverloadedStrings
+-- >>> import Box
+-- >>> import Prelude
 
 -- | 'Queue' specifies how messages are queued
 data Queue a
@@ -180,7 +184,9 @@ withQ q spawner cio eio =
           (eio (emitter box) `C.finally` seal)
     )
 
--- | create an unbounded queue, returning the Committer action result
+-- | Create an unbounded queue, returning the result from the Committer action.
+--
+-- >>> queueL New (\c -> glue c <$|> qList [1..3]) toListM
 queueL ::
   (MonadConc m) =>
   Queue a ->
@@ -189,7 +195,10 @@ queueL ::
   m l
 queueL q cm em = withQL q toBoxM cm em
 
--- | create an unbounded queue, returning the emitter result
+-- | Create an unbounded queue, returning the result from the Emitter action.
+--
+-- >>> queueR New (\c -> glue c <$|> qList [1..3]) toListM
+-- [3]
 queueR ::
   (MonadConc m) =>
   Queue a ->
@@ -198,7 +207,10 @@ queueR ::
   m r
 queueR q cm em = withQR q toBoxM cm em
 
--- | create an unbounded queue, returning both results
+-- | Create an unbounded queue, returning both results.
+--
+-- >>> queue Unbounded (\c -> glue c <$|> qList [1..3]) toListM
+-- ((),[1,2,3])
 queue ::
   (MonadConc m) =>
   Queue a ->
@@ -211,21 +223,21 @@ queue q cm em = withQ q toBoxM cm em
 liftB :: (MonadConc m) => Box (STM m) a b -> Box m a b
 liftB (Box c e) = Box (foist atomically c) (foist atomically e)
 
--- | turn a box action into a box continuation
+-- | Turn a box action into a box continuation
 fromAction :: (MonadConc m) => (Box m a b -> m r) -> CoBox m b a
 fromAction baction = Codensity $ fuseActions baction
 
--- | connect up two box actions via two queues
+-- | Connect up two box actions via two queues
 fuseActions :: (MonadConc m) => (Box m a b -> m r) -> (Box m b a -> m r') -> m r'
 fuseActions abm bam = do
   (Box ca ea, _) <- toBoxM Unbounded
   (Box cb eb, _) <- toBoxM Unbounded
   concurrentlyRight (abm (Box ca eb)) (bam (Box cb ea))
 
--- | hook a committer action to a queue, creating an emitter continuation
+-- | Hook a committer action to a queue, creating an emitter continuation.
 emitQ :: (MonadConc m) => Queue a -> (Committer m a -> m r) -> CoEmitter m a
 emitQ q cio = Codensity $ \eio -> queueR q cio eio
 
--- | hook a committer action to a queue, creating an emitter continuation
+-- | Hook a committer action to a queue, creating an emitter continuation.
 commitQ :: (MonadConc m) => Queue a -> (Emitter m a -> m r) -> CoCommitter m a
 commitQ q eio = Codensity $ \cio -> queueL q cio eio

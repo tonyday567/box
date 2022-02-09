@@ -8,7 +8,7 @@
 {-# OPTIONS_GHC -Wall #-}
 {-# OPTIONS_GHC -fno-warn-type-defaults #-}
 
--- | A box is something that commits and emits
+-- | A box is something that 'commit's and 'emit's
 module Box.Box
   ( Box (..),
     CoBox,
@@ -16,6 +16,7 @@ module Box.Box
     bmap,
     foistb,
     glue,
+    glueN,
     fuse,
     Divap (..),
     DecAlt (..),
@@ -38,16 +39,25 @@ import Data.Functor.Contravariant.Divisible
 import Data.Profunctor (Profunctor (dimap))
 import Data.Void (Void, absurd)
 import Prelude hiding ((.), id)
-import Box.Cont
-import Control.Monad.Codensity
+import Box.Codensity
 import Control.Monad.State.Lazy
 import qualified Data.Sequence as Seq
 import Data.Bool
 import Data.Semigroupoid
 import Box.Functor
 
--- | A Box is a product of a Committer m and an Emitter. Think of a box with an incoming wire and an outgoing wire. Now notice that the abstraction is reversable: are you looking at two wires from "inside a box"; a blind erlang grunt communicating with the outside world via the two thin wires, or are you looking from "outside the box"; interacting with a black box object. Either way, it's a box.
--- And either way, the committer is contravariant and the emitter covariant so it forms a profunctor.
+-- $setup
+-- >>> :set -XOverloadedStrings
+-- >>> import Prelude
+-- >>> import Box
+-- >>> import Data.Text (pack)
+-- >>> import Data.Bool
+
+-- | A Box is a product of a 'Committer' and an 'Emitter'.
+--
+-- Think of a box with an incoming arrow an outgoing arrow. And then make your pov ambiguous: are you looking at two wires from "inside a box"; or are you looking from "outside the box"; interacting with a black box object. Either way, it looks the same: it's a box.
+--
+-- And either way, one of the arrows, the 'Committer', is contravariant and the other, the 'Emitter' is covariant. The combination is a profunctor.
 --
 data Box m c e = Box
   { committer :: Committer m c,
@@ -68,23 +78,47 @@ instance (Alternative m, Monad m) => Monoid (Box m c e) where
   mempty = Box mempty mempty
   mappend = (<>)
 
--- | a profunctor dimapMaybe
+-- | A profunctor dimapMaybe
 bmap :: (Monad m) => (a' -> m (Maybe a)) -> (b -> m (Maybe b')) -> Box m a b -> Box m a' b'
-bmap fc fe (Box c e) = Box (mapC fc c) (mapE fe e)
+bmap fc fe (Box c e) = Box (witherC fc c) (witherE fe e)
 
 -- | Connect an emitter directly to a committer of the same type.
 --
--- The monadic action returns when the committer finishes.
+-- >>> glue showStdout <$|> qList [1..3]
+-- 1
+-- 2
+-- 3
 glue :: (Monad m) => Committer m a -> Emitter m a -> m ()
 glue c e = fix $ \rec -> emit e >>= maybe (pure False) (commit c) >>= bool (pure ()) rec
 
--- | fuse a box
+-- | Glues a committer and emitter, and takes n emits
+--
+-- >>> glueN 3 <$> pure showStdout <*|> qList [1..]
+-- 1
+-- 2
+-- 3
+--
+-- Note that glueN counts the number of events passing across the connection and doesn't take into account post-transmission activity in the Committer, eg
+--
+-- >>> glueN 4 (witherC (\x -> bool (pure Nothing) (pure (Just x)) (even x)) showStdout) <$|> qList [0..9]
+-- 0
+-- 2
+--
+glueN :: Monad m => Int -> Committer m a -> Emitter m a -> m ()
+glueN n c e = flip evalStateT 0 $ glue (foist lift c) (takeE n e)
+
+-- | Glue a Committer to an Emitter within a box.
 --
 -- > fuse (pure . pure) == \(Box c e) -> glue c e
+--
+-- A command-line echoer
+--
+-- > fuse (pure . Just . ("echo " <>)) (Box toStdout fromStdin)
+--
 fuse :: (Monad m) => (a -> m (Maybe b)) -> Box m b a -> m ()
-fuse f (Box c e) = glue c (mapE f e)
+fuse f (Box c e) = glue c (witherE f e)
 
--- | combines 'divide'/'conquer' and 'liftA2'/'pure'
+-- | combines 'divide' 'conquer' and 'liftA2' 'pure'
 class Divap p where
   divap :: (a -> (b, c)) -> ((d, e) -> f) -> p b d -> p c e -> p a f
   conpur :: a -> p b a
@@ -105,11 +139,22 @@ instance (Monad m, Alternative m) => DecAlt (Box m) where
     Box (choose split' lc rc) (fmap merge $ fmap Left le <|> fmap Right re)
   loss = Box (lose absurd) empty
 
+-- | A box continuation
 type CoBox m a b = Codensity m (Box m a b)
 
+-- | Construct a CoBox
+--
+--
+-- > cobox = Box <$> c <*> e
+--
+-- >>> fuse (pure . Just . ("show: " <>) . pack . show) <$|> (cobox (pure toStdout) (qList [1..3]))
+-- show: 1
+-- show: 2
+-- show: 3
 cobox :: CoCommitter m a -> CoEmitter m b -> CoBox m a b
 cobox c e = Box <$> c <*> e
 
+-- | State monad queue.
 seqBox :: (Monad m) => Box (StateT (Seq.Seq a) m) a a
 seqBox = Box push pop
 
@@ -121,6 +166,7 @@ dotco b b' = lift $ do
   glue c' e
   pure (Box c e')
 
+-- | Wrapper for the semigroupoid instance of a box continuation.
 newtype CoBoxM m a b = CoBoxM { uncobox :: Codensity m (Box m a b) }
 
 instance (Monad m) => Semigroupoid (CoBoxM m) where

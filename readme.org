@@ -152,7 +152,14 @@ glue toStdout <$|> fmap (fmap (pack . show)) (qList [1..3])
 
 The first fmap is fmapping over the Codensity layer of qList, and the second fmap is fmapping into Emitter.
 
-*** ToDo filterE
+*** witherE
+
+#+begin_src haskell
+filterE p = witherE (\a -> bool (pure (Just a)) (pure Nothing) (p a))
+#+end_src
+
+
+
 
 ** At the Committer
 
@@ -200,10 +207,10 @@ commit toStdout "I'm committed!"
 : I'm committed!
 : True
 
-Use mapC to modify a Committer and introduce effects.
+Use witherC to modify a Committer and introduce effects.
 
 #+begin_src haskell
-let c = mapC (\a -> if a==2 then (sleep 0.1 >> putStrLn "stole a 2!" >> sleep 0.1 >> pure (Nothing)) else (pure (Just a))) (contramap (pack . show) toStdout)
+let c = witherC (\a -> if a==2 then (sleep 0.1 >> putStrLn "stole a 2!" >> sleep 0.1 >> pure (Nothing)) else (pure (Just a))) (contramap (pack . show) toStdout)
 glue c <$|> qList [1..3]
 #+end_src
 
@@ -215,8 +222,8 @@ glue c <$|> qList [1..3]
 The monoid instance of Committer sends each commit to both mappended committers. Because effects are also mappended together, the committed result is not always what is expected.
 
 #+begin_src haskell :results output
-let cFast = mapC (\b -> pure (Just b)) . contramap ("fast: " <>) $ toStdout
-let cSlow = mapC (\b -> sleep 0.1 >> pure (Just b)) . contramap ("slow: " <>) $ toStdout
+let cFast = witherC (\b -> pure (Just b)) . contramap ("fast: " <>) $ toStdout
+let cSlow = witherC (\b -> sleep 0.1 >> pure (Just b)) . contramap ("slow: " <>) $ toStdout
 glue (cFast <> cSlow) <$|> qList ((pack . show) <$> [1..3]))) <* sleep 1
 #+end_src
 
@@ -395,4 +402,79 @@ concurrentELog :: Show a =>
   Emitter IO a -> Emitter IO a -> Codensity IO (Emitter IO a)
 concurrentELog e e' =
   Codensity $ \eaction -> snd . fst <$> C.concurrently (queueIO (`glue` e) eaction) (queueIO (`glue` e') eaction)
+#+end_src
+
+#+begin_src haskell
+-- | take a list, emit it through a box, and output the committed result.
+--
+-- The pure nature of this computation is highly useful for testing,
+-- especially where parts of the box under investigation has non-deterministic attributes.
+fromToList_ :: (Monad m) => [a] -> (Box (StateT (Seq.Seq b, Seq.Seq a) m) b a -> StateT (Seq.Seq b, Seq.Seq a) m r) -> m [b]
+fromToList_ xs f = do
+  (res, _) <-
+    flip execStateT (Seq.empty, Seq.fromList xs) $
+      f (Box (foist (zoom _1) push) (foist (zoom _2) pop))
+  pure $ toList res
+#+end_src
+
+#+begin_src haskell
+(c1,l1) <- refCommitter :: IO (Committer IO Int, IO [Int])
+close $ toListM <$> (forkEmit <$> (qList [1..5]) <*> pure c1)
+l1
+#+end_src
+
+* attoparsec parser
+
+#+begin_src haskell
+-- | attoparsec parse emitter which returns the original text on failure
+parseE :: (Functor m) => A.Parser a -> Emitter m Text -> Emitter m (Either Text a)
+parseE parser e = (\t -> either (const $ Left t) Right (A.parseOnly parser t)) <$> e
+#+end_src
+
+* State
+
+#+begin_src haskell
+-- | Supply takeE with a continuation and escape the state layer.
+--
+-- >>> takeEK 4 <$> qList [0..] <*|> pure toListM
+-- [0,1,2,3]
+--
+takeEK :: (Monad m) => Int -> Emitter m a -> (Emitter (StateT Int m) a -> StateT Int m r) -> m r
+takeEK n e k = flip evalStateT 0 . k . takeE n $ e
+#+end_src
+
+
+* playback
+
+#+begin_src haskell
+-- | wait until Stamped time before emitting
+emitOn ::
+  Emitter IO (LocalTime, a) ->
+  Emitter IO a
+emitOn =
+  witherE
+    ( \(l, a) -> do
+        sleepUntil (localTimeToUTC utc l)
+        pure $ Just a
+    )
+
+-- | reset the emitter stamps to by in sync with the current time and adjust the speed
+--
+-- > let e1 = qList (zipWith (\x a -> Stamped (addUTCTime x t) a) [0..5] [0..5])
+playback :: Double -> Emitter IO (LocalTime, a) -> IO (Emitter IO (LocalTime, a))
+playback speed e = do
+  r <- emit e
+  case r of
+    Nothing -> pure mempty
+    Just (l0, _) -> do
+      t0 <- getCurrentTime
+      let ua = diffLocalTime (utcToLocalTime utc t0) l0
+      let delta u = addLocalTime ua $ addLocalTime (toNominalDiffTime (fromNominalDiffTime (diffLocalTime u l0) * speed)) l0
+      pure (witherE (\(l, a) -> pure (Just (delta l, a))) e)
+
+-- | simulate a delay from a (Stamped a) Emitter relative to the first timestamp
+simulate :: Double -> Emitter IO (LocalTime, a) -> CoEmitter IO a
+simulate speed e = Codensity $ \eaction -> do
+  e' <- playback speed e
+  eaction (emitOn e')
 #+end_src

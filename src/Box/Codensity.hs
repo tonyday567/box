@@ -5,19 +5,25 @@
 {-# OPTIONS_GHC -Wall #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
--- | A continuation type.
-module Box.Cont
-  ( Codensity (..),
-    close,
+-- | Extra Codensity operators.
+module Box.Codensity
+  ( close,
     process,
     (<$|>),
     (<*|>),
+    module Control.Monad.Codensity,
   )
 where
 
 import Control.Applicative
 import Control.Monad.Codensity
 import Prelude
+
+-- $setup
+-- >>> :set -XOverloadedStrings
+-- >>> import Prelude
+-- >>> import Box
+-- >>> import Data.Bool
 
 instance (Semigroup a) => Semigroup (Codensity m a) where
   (<>) = liftA2 (<>)
@@ -28,30 +34,42 @@ instance (Functor m, Semigroup a, Monoid a) => Monoid (Codensity m a) where
   mappend = (<>)
 
 -- | close a continuation
+--
+-- >>> close $ glue showStdout <$> qList [1..3]
+-- 1
+-- 2
+-- 3
 close :: Codensity m (m r) -> m r
 close x = runCodensity x id
 
--- | flipped runCodensity
+-- | fmap then close over a Codensity
 --
--- This is equivalent to \f a -> f =<< lowerCodensity a (which is also CoKleisi),
--- but without any Monad constraint.
---
--- The . position is towards the continuation
+-- >>> process (glue showStdout) (qList [1..3])
+-- 1
+-- 2
+-- 3
 process :: (a -> m r) -> Codensity m a -> m r
 process = flip runCodensity
 
 infixr 3 <$|>
 
--- | map over a continuation and close.
+-- | fmap then close over a Codensity
 --
+-- >>> glue showStdout <$|> qList [1..3]
+-- 1
+-- 2
+-- 3
 (<$|>) :: (a -> m r) -> Codensity m a -> m r
 (<$|>) = process
 
 
 infixr 3 <*|>
 
--- | apply to the continuation and close.
+-- | apply to a continuation and close.
 --
--- The | is positioned towards the continuation
+-- >>> glue <$> (pure showStdout) <*|> qList [1..3]
+-- 1
+-- 2
+-- 3
 (<*|>) :: Codensity m (a -> m r) -> Codensity m a -> m r
 (<*|>) f a = close (f <*> a)

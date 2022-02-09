@@ -8,7 +8,7 @@
 {-# OPTIONS_GHC -Wall #-}
 {-# OPTIONS_GHC -fno-warn-type-defaults #-}
 
--- | IO actions
+-- | IO effects
 module Box.IO
   ( fromStdin,
     toStdout,
@@ -18,8 +18,8 @@ module Box.IO
     showStdout,
     handleE,
     handleC,
-    cRef,
-    eRef,
+    refCommitter,
+    refEmitter,
     fileE,
     fileWriteC,
     fileAppendC,
@@ -28,7 +28,7 @@ where
 
 import Box.Committer
 import Box.Connectors
-import Box.Cont
+import Box.Codensity
 import Box.Emitter
 import qualified Control.Concurrent.Classy.IORef as C
 import Control.Exception
@@ -44,27 +44,25 @@ import Prelude
 
 -- $setup
 -- >>> :set -XOverloadedStrings
--- >>> :set -XGADTs
--- >>> :set -XFlexibleContexts
--- >>> import Data.Functor.Contravariant
+-- >>> import Prelude
 -- >>> import Box
--- >>> import Control.Applicative
--- >>> import Control.Monad.Conc.Class as C
--- >>> import Control.Lens
--- >>> import qualified Data.Sequence as Seq
--- >>> import Data.Text (pack, Text)
+-- >>> import Data.Bool
+-- >>> import Data.Text (Text, pack)
 -- >>> import Data.Functor.Contravariant
 
 -- * console
 
--- | emit Text from stdin inputs
+-- | Emit text from stdin
 --
--- >>> :t emit fromStdin
--- emit fromStdin :: IO (Maybe Text)
+-- @
+-- λ> emit fromStdin
+-- hello
+-- Just "hello"
+-- @
 fromStdin :: Emitter IO Text
 fromStdin = Emitter $ Just <$> Text.getLine
 
--- | commit to stdout
+-- | Commit to stdout
 --
 -- >>> commit toStdout ("I'm committed!" :: Text)
 -- I'm committed!
@@ -72,23 +70,43 @@ fromStdin = Emitter $ Just <$> Text.getLine
 toStdout :: Committer IO Text
 toStdout = Committer $ \a -> Text.putStrLn a >> pure True
 
--- | finite console emitter
+-- | Finite console emitter
+--
+-- @
+-- λ> toListM /<$|/> fromStdinN 2
+-- hello
+-- hello again
+-- ["hello","hello again"]
+-- @
 fromStdinN :: Int -> CoEmitter IO Text
 fromStdinN n = source n Text.getLine
 
--- | finite console committer
+-- | Finite console committer
+--
+-- >>> glue <$> contramap (pack . show) <$> (toStdoutN 2) <*|> qList [1..3]
+-- 1
+-- 2
 toStdoutN :: Int -> CoCommitter IO Text
 toStdoutN n = sink n Text.putStrLn
 
--- | read from console, throwing away read errors
+-- | Read from console, throwing away read errors
+--
+-- λ> glueN 2 showStdout (readStdin :: Emitter IO Int)
+-- 1
+-- 1
+-- hippo
+-- 2
 readStdin :: Read a => Emitter IO a
-readStdin = mapE (pure . either (const Nothing) Just) . readE $ fromStdin
+readStdin = witherE (pure . either (const Nothing) Just) . readE $ fromStdin
 
--- | show to stdout
+-- | Show to stdout
+--
+-- >>> glue showStdout <$|> qList [1..3]
+-- 1
+-- 2
+-- 3
 showStdout :: Show a => Committer IO a
 showStdout = contramap (Text.pack . show) toStdout
-
--- * handle operations
 
 -- | Emits lines of Text from a handle.
 handleE :: Handle -> Emitter IO Text
@@ -104,21 +122,27 @@ handleC h = Committer $ \a -> do
   Text.hPutStrLn h a
   pure True
 
--- | Emits lines of Text from a file.
+-- | Emit lines of Text from a file.
 fileE :: FilePath -> CoEmitter IO Text
 fileE fp = Codensity $ \eio -> withFile fp ReadMode (eio . handleE)
 
--- | Commits lines of Text to a file.
+-- | Commit lines of Text to a file.
 fileWriteC :: FilePath -> CoCommitter IO Text
 fileWriteC fp = Codensity $ \cio -> withFile fp WriteMode (cio . handleC)
 
--- | Commits lines of Text, appending to a file.
+-- | Commit lines of Text, appending to a file.
 fileAppendC :: FilePath -> CoCommitter IO Text
 fileAppendC fp = Codensity $ \cio -> withFile fp AppendMode (cio . handleC)
 
--- | commit to an IORef
-cRef :: (C.MonadConc m) => m (Committer m a, m [a])
-cRef = do
+-- | Commit to an IORef
+--
+-- >>> (c1,l1) <- refCommitter :: IO (Committer IO Int, IO [Int])
+-- >>> glue c1 <$|> qList [1..3]
+-- >>> l1
+-- [1,2,3]
+--
+refCommitter :: (C.MonadConc m) => m (Committer m a, m [a])
+refCommitter = do
   ref <- C.newIORef Seq.empty
   let c = Committer $ \a -> do
         C.modifyIORef ref (Seq.:|> a)
@@ -126,9 +150,13 @@ cRef = do
   let res = toList <$> C.readIORef ref
   pure (c, res)
 
--- | emit from a list IORef
-eRef :: (C.MonadConc m) => [a] -> m (Emitter m a)
-eRef xs = do
+-- | Emit from a list IORef
+--
+-- >>> e <- refEmitter [1..3]
+-- >>> toListM e
+-- [1,2,3]
+refEmitter :: (C.MonadConc m) => [a] -> m (Emitter m a)
+refEmitter xs = do
   ref <- C.newIORef xs
   let e = Emitter $ do
         as <- C.readIORef ref
