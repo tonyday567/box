@@ -2,7 +2,7 @@
 
 [[https://hackage.haskell.org/package/box][file:https://img.shields.io/hackage/v/box.svg]] [[https://github.com/tonyday567/box/actions?query=workflow%3Ahaskell-ci][file:https://github.com/tonyday567/box/workflows/haskell-ci/badge.svg]]
 
-* A profunctor system.
+* A profunctor effect.
 
 #+begin_quote
 What is all this stuff around me; this stream of experiences that I seem to be having all the time? Throughout history there have been people who say it is all illusion. ~ S Blackmore
@@ -14,7 +14,7 @@ It's a bit of a hodge-podge, but there's a good idea or two in here somewhere I'
 
 - Box.Queue is well balanced and has never raced or blocked. I don't think it can.
 - Boxes are as fast as the underlying computation, and you tend not to notice them once they're coded up.
-- a Box is also a profunctor, which get a lot of love these days, and should be well supported for a bit.
+- a Box is a profunctor. In the langauge of optics, it's an adapter, and library extension may expand this into other optics areas.
 - Continuation-based coding is very hard (at least for me), but seems less hard with the library in hand.
 
 * Usage
@@ -34,167 +34,6 @@ glue toStdout <$|> qList ["a","b","c"]
 : a
 : b
 : c
-
-* continuation operators
-
-As with many operators in the library, ~qList~ is actually a continuation:
-
-#+begin_src haskell
-:t qList
-#+end_src
-
-#+RESULTS:
-: qList
-:   :: Control.Monad.Conc.Class.MonadConc m => [a] -> CoEmitter m a
-
-#+begin_src haskell
-type CoEmitter m a = Codensity m (Emitter m a)
-#+end_src
-
-Codensity has an Applicative instance, and lends itself to applicative-style coding. To send a (queued) list to stdout, for example, you could say:
-
-#+begin_src haskell
-:t glue <$> pure toStdout <*> qList ["a", "b", "c"]
-#+end_src
-
-#+RESULTS:
-: glue <$> pure toStdout <*> qList ["a", "b", "c"]
-:   :: Codensity IO (IO ())
-
-and then escape the continuation with:
-
-#+begin_src haskell
-runCodensity (glue <$> pure toStdout <*> (qList ["a", "b", "c"])) id
-#+end_src
-
-#+RESULTS:
-: a
-: b
-: c
-
-This closes the continuation. The following code is equivalent:
-
-#+begin_src haskell
-close $ glue <$> pure toStdout <*> qList ["a", "b", "c"]
-#+end_src
-
-#+RESULTS:
-: a
-: b
-: c
-
-#+begin_src haskell
-close $ glue toStdout <$> qList ["a", "b", "c"]
-#+end_src
-
-#+RESULTS:
-: a
-: b
-: c
-
-#+begin_src haskell
-glue toStdout <$|> qList ["a", "b", "c"]
-#+end_src
-
-#+RESULTS:
-: a
-: b
-: c
-
-#+begin_src haskell
-glue <$> pure toStdout <*|> qList ["a", "b", "c"]
-#+end_src
-
-#+RESULTS:
-: a
-: b
-: c
-
-* glue
-
-#+begin_quote
-This is how we can use a profunctor to glue together two categories ~ Milewski
-[[https://bartoszmilewski.com/2019/03/27/promonads-arrows-and-einstein-notation-for-profunctors/][Promonads, Arrows, and Einstein Notation for Profunctors]]
-#+end_quote
-
-~glue~ glues together a Committer and Emitter. Once glued, it will be difficult to tear them apart again. It can probably be done but will be messy.
-
-
-Non-fix version of glue:
-
-#+begin_src haskell
-glue' :: (Monad m) => Committer m a -> Emitter m a -> m ()
-glue' c e = go
-  where
-    go = do
-      a <- emit e
-      c' <- maybe (pure False) (commit c) a
-      when c' go
-#+end_src
-
-
-* coding points
-
-There are three points at which things can be change:
-
-** At the Emitter
-
-An Emitter is a Functor, so anything coming out of it can be fmapped.
-
-#+begin_src haskell
-glue toStdout <$|> fmap (fmap (pack . show)) (qList [1..3])
-#+end_src
-
-#+RESULTS:
-: 1
-: 2
-: 3
-
-The first fmap is fmapping over the Codensity layer of qList, and the second fmap is fmapping into Emitter.
-
-*** witherE
-
-#+begin_src haskell
-filterE p = witherE (\a -> bool (pure (Just a)) (pure Nothing) (p a))
-#+end_src
-
-
-
-
-** At the Committer
-
-#+begin_src haskell
-import Data.Functor.Contravariant
-glue (contramap (pack . show) toStdout) <$|> qList [1..3]
-#+end_src
-
-#+RESULTS:
-: 1
-: 2
-: 3
-
-*** ToDo filterC
-
-** At the fusion of a Box
-
-~fuse~ glues an Emitter and Committer contained in a Box by passing emissions to the committers using an intermediary function:
-
-#+begin_src haskell
-:t fuse
-#+end_src
-
-#+RESULTS:
-: fuse :: Monad m => (a -> m (Maybe b)) -> Box m b a -> m ()
-
-#+begin_src haskell
-import Data.Bool
-let box' = Box <$> pure toStdout <*> qList ((pack . show) <$> [1..3])
-fuse (\a -> bool (pure $ Just $ "echo: " <> a) (pure Nothing) (a=="2")) <$|> box'
-#+end_src
-
-#+RESULTS:
-: echo: 1
-: echo: 3
 
 * Committing
 
@@ -294,21 +133,28 @@ process toListM es'
 #+RESULTS:
 :
 : > [1,2,3]
+* Gluing
 
-* ToDo State
+#+begin_quote
+This is how we can use a profunctor to glue together two categories ~ Milewski
+[[https://bartoszmilewski.com/2019/03/27/promonads-arrows-and-einstein-notation-for-profunctors/][Promonads, Arrows, and Einstein Notation for Profunctors]]
+#+end_quote
 
-See ~pop~ and ~push~
+~glue~ glues together a Committer and Emitter. Once glued, it will be difficult to tear them apart again. It can probably be done but will be messy.
 
-A single StateT Seq.Seq is broken eg
+Non-fix version of glue:
 
-#+begin_src haskell :results output
-flip runStateT (Seq.empty) $ close $ glue <$> pure push <*> qList [1..4]
+#+begin_src haskell
+glue' :: (Monad m) => Committer m a -> Emitter m a -> m ()
+glue' c e = go
+  where
+    go = do
+      a <- emit e
+      c' <- maybe (pure False) (commit c) a
+      when c' go
 #+end_src
 
-#+RESULTS:
-: ((),fromList [])
-
-* finiteness
+** finiteness
 
 Most committers and emitters will run forever until the glued or fused other-side returns.
 
@@ -344,35 +190,166 @@ glueN 4 <$> pure (contramap (pack . show) toStdout) <*|> qList [1..]
 : 3
 : 4
 
-* types
+* Computation points
 
-If a Box is restricted to be Homo ...
+There are three points at which change happens:
+
+** At the Emitter
+
+An Emitter is a Functor, so anything coming out of it can be fmapped.
 
 #+begin_src haskell
-data BoxH m a = BoxH
-  { committerH :: Committer m a,
-    emitterH :: Emitter m a
-  }
+glue toStdout <$|> fmap (fmap (pack . show)) (qList [1..3])
+#+end_src
 
-instance FFunctor BoxH
-  where
-    foist nat (BoxH c e) = BoxH (foist nat c) (foist nat e)
+#+RESULTS:
+: 1
+: 2
+: 3
+
+The first fmap is fmapping over the Codensity layer of qList, and the second fmap is fmapping into Emitter.
+
+*** witherE
+
+#+begin_src haskell
+filterE p = witherE (\a -> bool (pure (Just a)) (pure Nothing) (p a))
 #+end_src
 
 
-* toListM
-
-Version of toListM that doesn't go through FoldableM
+** At the Committer
 
 #+begin_src haskell
--- | Collect emitter emits into a list.
-toListM :: Monad m => Emitter m a -> m [a]
-toListM e =
-  D.toList <$>
-  fix (\ rec xs -> emit e >>= maybe (pure xs) (rec . D.snoc xs)) D.empty
+import Data.Functor.Contravariant
+glue (contramap (pack . show) toStdout) <$|> qList [1..3]
 #+end_src
 
-* debugging
+#+RESULTS:
+: 1
+: 2
+: 3
+
+*** ToDo filterC
+
+** At the intersection of an emitter and committer
+
+~fuse~ glues an Emitter and Committer contained in a Box by passing emissions to the committers using an intermediary function:
+
+#+begin_src haskell
+:t fuse
+#+end_src
+
+#+RESULTS:
+: fuse :: Monad m => (a -> m (Maybe b)) -> Box m b a -> m ()
+
+#+begin_src haskell
+import Data.Bool
+let box' = Box <$> pure toStdout <*> qList ((pack . show) <$> [1..3])
+fuse (\a -> bool (pure $ Just $ "echo: " <> a) (pure Nothing) (a=="2")) <$|> box'
+#+end_src
+
+#+RESULTS:
+: echo: 1
+: echo: 3
+
+A future direction of the library may be to add this in to a box.
+
+* Continuation operators
+
+As with many operators in the library, ~qList~ is actually a continuation:
+
+#+begin_src haskell
+:t qList
+#+end_src
+
+#+RESULTS:
+: qList
+:   :: Control.Monad.Conc.Class.MonadConc m => [a] -> CoEmitter m a
+
+#+begin_src haskell
+type CoEmitter m a = Codensity m (Emitter m a)
+#+end_src
+
+Codensity has an Applicative instance, and lends itself to applicative-style coding. To send a (queued) list to stdout, for example, you could say:
+
+#+begin_src haskell
+:t glue <$> pure toStdout <*> qList ["a", "b", "c"]
+#+end_src
+
+#+RESULTS:
+: glue <$> pure toStdout <*> qList ["a", "b", "c"]
+:   :: Codensity IO (IO ())
+
+and then escape the continuation with:
+
+#+begin_src haskell
+runCodensity (glue <$> pure toStdout <*> (qList ["a", "b", "c"])) id
+#+end_src
+
+#+RESULTS:
+: a
+: b
+: c
+
+This closes the continuation. The following code is equivalent:
+
+#+begin_src haskell
+close $ glue <$> pure toStdout <*> qList ["a", "b", "c"]
+#+end_src
+
+#+RESULTS:
+: a
+: b
+: c
+
+#+begin_src haskell
+close $ glue toStdout <$> qList ["a", "b", "c"]
+#+end_src
+
+#+RESULTS:
+: a
+: b
+: c
+
+#+begin_src haskell
+glue toStdout <$|> qList ["a", "b", "c"]
+#+end_src
+
+#+RESULTS:
+: a
+: b
+: c
+
+#+begin_src haskell
+glue <$> pure toStdout <*|> qList ["a", "b", "c"]
+#+end_src
+
+#+RESULTS:
+: a
+: b
+: c
+
+* Explicit Continuation
+
+At the tip of stream implementations are coroutines that embed continuation logic. A major drawback of eschewing coroutines is that continuations become explicit and difficult to hide.
+
+#+begin_src haskell
+:t takeE
+takeE :: Monad m => Int -> Emitter m a -> Emitter (StateT Int m) a
+#+end_src
+
+A disappointing type. The state monad can not quite be hidden:
+
+#+begin_src haskell
+-- | Supply takeE with a continuation and escape the state layer.
+--
+-- >>> takeEK 4 <$> qList [0..] <*|> pure toListM
+-- [0,1,2,3]
+--
+takeEK :: (Monad m) => Int -> Emitter m a -> (Emitter (StateT Int m) a -> StateT Int m r) -> m r
+takeEK n e k = flip evalStateT 0 . k . takeE n $ e
+#+end_src
+
+* Debugging
 
 #+begin_src haskell
 logE ::
@@ -417,64 +394,93 @@ fromToList_ xs f = do
   pure $ toList res
 #+end_src
 
+* Future directions
+
+This library is at the intersection of many different and current Haskell threads, which means that it could quickly be elided or obviated by future developments.
+
+** Optics
+
+A Box is an Adapter in the language of optics.
+
+** Streamly
+
+An Emitter looks very similar to an IsStream in streamly
+
+The library may be subsumed by this one.
+
+** Wider types
+
+If the types were widened, it would widen the potential use cases:
+
 #+begin_src haskell
-(c1,l1) <- refCommitter :: IO (Committer IO Int, IO [Int])
-close $ toListM <$> (forkEmit <$> (qList [1..5]) <*> pure c1)
-l1
+newtype Committer f a = Committer { commit :: a -> f () }
+
+instance Contravariant (Committer f) where
+  contramap f (Committer a) = Committer (a . f)
+
+newtype Emitter f a = Emitter { emit :: f a }
+
+instance (Functor f) => Functor (Emitter f) where
+  fmap f (Emitter a) = Emitter (fmap f a)
+
+data Box f g b a =
+  Box { committer :: Committer g b, emitter :: Emitter f a }
+
+instance (Functor f) => Functor (Box f g b) where
+  fmap f (Box c e) = Box c (fmap f e)
+
+instance (Functor f, Contravariant g) => Profunctor (Box f g) where
+  dimap f g (Box c e) = Box (contramap f c) (fmap g e)
 #+end_src
 
-* attoparsec parser
+The existing computations could be recovered with:
 
 #+begin_src haskell
--- | attoparsec parse emitter which returns the original text on failure
-parseE :: (Functor m) => A.Parser a -> Emitter m Text -> Emitter m (Either Text a)
-parseE parser e = (\t -> either (const $ Left t) Right (A.parseOnly parser t)) <$> e
+type CommitterB m a = Committer (MaybeT m) a
+type EmitterB m a = Emitter (MaybeT m) a
+type BoxB m b a = Box (MaybeT m) (MaybeT m) b a
 #+end_src
 
-* State
+** Introduce a nucleus
+
+Wider types highlights a flaw in the original conception of the library. There are the ends of the computational pipeline, but there is also the gluing/fusion/middle bit.
 
 #+begin_src haskell
--- | Supply takeE with a continuation and escape the state layer.
---
--- >>> takeEK 4 <$> qList [0..] <*|> pure toListM
--- [0,1,2,3]
---
-takeEK :: (Monad m) => Int -> Emitter m a -> (Emitter (StateT Int m) a -> StateT Int m r) -> m r
-takeEK n e k = flip evalStateT 0 . k . takeE n $ e
+connect :: (f a -> b) -> Committer g b -> Emitter f a -> g ()
+connect w c e = emit e & w & commit c
+
+glue :: Box f g (f a) a -> g ()
+glue (Box c e) = connect id c e
+
+nucleate ::
+  Functor f =>
+  (f a -> f b) ->
+  Committer g b ->
+  Emitter f a ->
+  f (g ())
+nucleate n c e = emit e & n & fmap (commit c)
+#+end_src
+* bugs
+
+This compiles but is broken:
+
+#+begin_src haskell :results output
+flip runStateT Seq.empty $ close $ glue <$> pure push <*> qList [1..4]
 #+end_src
 
+The pure lifts to the wrong spot I suspect.
 
-* playback
+#+begin_src haskell :results output
+flip runStateT Seq.empty $ close $ glue <$> push <*> (foist lift $ qList [1..4])
+#+end_src
+* toListM
+
+Version of toListM that doesn't go through FoldableM
 
 #+begin_src haskell
--- | wait until Stamped time before emitting
-emitOn ::
-  Emitter IO (LocalTime, a) ->
-  Emitter IO a
-emitOn =
-  witherE
-    ( \(l, a) -> do
-        sleepUntil (localTimeToUTC utc l)
-        pure $ Just a
-    )
-
--- | reset the emitter stamps to by in sync with the current time and adjust the speed
---
--- > let e1 = qList (zipWith (\x a -> Stamped (addUTCTime x t) a) [0..5] [0..5])
-playback :: Double -> Emitter IO (LocalTime, a) -> IO (Emitter IO (LocalTime, a))
-playback speed e = do
-  r <- emit e
-  case r of
-    Nothing -> pure mempty
-    Just (l0, _) -> do
-      t0 <- getCurrentTime
-      let ua = diffLocalTime (utcToLocalTime utc t0) l0
-      let delta u = addLocalTime ua $ addLocalTime (toNominalDiffTime (fromNominalDiffTime (diffLocalTime u l0) * speed)) l0
-      pure (witherE (\(l, a) -> pure (Just (delta l, a))) e)
-
--- | simulate a delay from a (Stamped a) Emitter relative to the first timestamp
-simulate :: Double -> Emitter IO (LocalTime, a) -> CoEmitter IO a
-simulate speed e = Codensity $ \eaction -> do
-  e' <- playback speed e
-  eaction (emitOn e')
+-- | Collect emitter emits into a list.
+toListM :: Monad m => Emitter m a -> m [a]
+toListM e =
+  D.toList <$>
+  fix (\ rec xs -> emit e >>= maybe (pure xs) (rec . D.snoc xs)) D.empty
 #+end_src
