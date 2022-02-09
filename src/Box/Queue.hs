@@ -47,19 +47,19 @@ data Queue a
   | Newest Int
   | New
 
--- | create a queue, returning the ends
+-- | create a queue, supplying the ends and a sealing function.
 ends :: MonadSTM stm => Queue a -> stm (a -> stm (), stm a)
 ends qu =
   case qu of
     Bounded n -> do
       q <- newTBQueue (fromIntegral n)
-      return (writeTBQueue q, readTBQueue q)
+      pure (writeTBQueue q, readTBQueue q)
     Unbounded -> do
       q <- newTQueue
-      return (writeTQueue q, readTQueue q)
+      pure (writeTQueue q, readTQueue q)
     Single -> do
       m <- newEmptyTMVar
-      return (putTMVar m, takeTMVar m)
+      pure (putTMVar m, takeTMVar m)
     Latest a -> do
       t <- newTVar a
       return (writeTVar t, readTVar t)

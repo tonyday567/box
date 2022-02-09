@@ -69,13 +69,13 @@ instance (Applicative m) => Applicative (Emitter m) where
   mf <*> mx = Emitter ((<*>) <$> emit mf <*> emit mx)
 
 instance (Monad m) => Monad (Emitter m) where
-  return r = Emitter (return (return r))
+  return = pure
 
   m >>= f =
     Emitter $ do
       ma <- emit m
       case ma of
-        Nothing -> return Nothing
+        Nothing -> pure Nothing
         Just a -> emit (f a)
 
 instance (Monad m, Alternative m) => Alternative (Emitter m) where

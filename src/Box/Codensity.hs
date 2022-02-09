@@ -48,8 +48,8 @@ close x = runCodensity x id
 -- 1
 -- 2
 -- 3
-process :: (a -> m r) -> Codensity m a -> m r
-process = flip runCodensity
+process :: forall a m r. (a -> m r) -> Codensity m a -> m r
+process f k = runCodensity k f
 
 infixr 3 <$|>
 
@@ -59,7 +59,7 @@ infixr 3 <$|>
 -- 1
 -- 2
 -- 3
-(<$|>) :: (a -> m r) -> Codensity m a -> m r
+(<$|>) :: forall a m r. (a -> m r) -> Codensity m a -> m r
 (<$|>) = process
 
 
