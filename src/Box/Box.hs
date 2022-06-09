@@ -17,6 +17,8 @@ module Box.Box
     foistb,
     glue,
     glueN,
+    glueES,
+    glueS,
     fuse,
     Divap (..),
     DecAlt (..),
@@ -52,6 +54,7 @@ import Prelude hiding (id, (.))
 -- >>> import Box
 -- >>> import Data.Text (pack)
 -- >>> import Data.Bool
+-- >>> import Control.Monad.State.Lazy
 
 -- | A Box is a product of a 'Committer' and an 'Emitter'.
 --
@@ -89,6 +92,22 @@ bmap fc fe (Box c e) = Box (witherC fc c) (witherE fe e)
 -- 3
 glue :: (Monad m) => Committer m a -> Emitter m a -> m ()
 glue c e = fix $ \rec -> emit e >>= maybe (pure False) (commit c) >>= bool (pure ()) rec
+
+-- | Connect a Stateful emitter to a (non-stateful) committer of the same type, supplying initial state.
+--
+-- >>> glueES 0 (showStdout) <$|> (takeE 2 <$> qList [1..3])
+-- 1
+-- 2
+glueES :: (Monad m) => s -> Committer m a -> Emitter (StateT s m) a -> m ()
+glueES s c e = flip evalStateT s $ glue (foist lift c) e
+
+-- | Connect a Stateful emitter to a (similarly-stateful) committer of the same type, supplying initial state.
+--
+-- >>> glueS 0 (foist lift showStdout) <$|> (takeE 2 <$> qList [1..3])
+-- 1
+-- 2
+glueS :: (Monad m) => s -> Committer (StateT s m) a -> Emitter (StateT s m) a -> m ()
+glueS s c e = flip evalStateT s $ glue c e
 
 -- | Glues a committer and emitter, and takes n emits
 --

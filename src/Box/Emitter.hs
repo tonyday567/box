@@ -8,6 +8,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wall #-}
 {-# OPTIONS_GHC -fno-warn-type-defaults #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
 -- | `emit`
 module Box.Emitter
@@ -19,6 +20,7 @@ module Box.Emitter
     unlistE,
     takeE,
     takeUntilE,
+    dropE,
     pop,
   )
 where
@@ -181,6 +183,16 @@ unlistE es = Emitter unlists
 takeE :: (Monad m) => Int -> Emitter m a -> Emitter (StateT Int m) a
 takeE n (Emitter e) =
   Emitter $ get >>= \n' -> bool (pure Nothing) (put (n' + 1) >> lift e) (n' < n)
+
+-- | Drop n emits.
+--
+-- >>> import Control.Monad.State.Lazy
+-- >>> toListM <$|> (dropE 2 =<< qList [0..3])
+-- [2,3]
+dropE :: (Monad m) => Int -> Emitter m a -> CoEmitter m a
+dropE n e = Codensity $ \k -> do
+  replicateM_ n (emit e)
+  k e
 
 -- | Take from an emitter until a predicate.
 --

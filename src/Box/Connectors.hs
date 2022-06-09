@@ -20,6 +20,7 @@ module Box.Connectors
     bufferEmitter,
     concurrentE,
     concurrentC,
+    takeQ,
   )
 where
 
@@ -57,7 +58,7 @@ qList xs = emitQ Unbounded (\c -> fmap and (traverse (commit c) xs))
 -- 2
 -- 3
 popList :: Monad m => [a] -> Committer m a -> m ()
-popList xs c = flip evalStateT (Seq.fromList xs) $ glue (foist lift c) pop
+popList xs c = glueES (Seq.fromList xs) c pop
 
 -- | Push an Emitter into a list, via push.
 --
@@ -184,3 +185,11 @@ mergeC ec =
     case ec of
       Left lc -> commit lc a
       Right rc -> commit rc a
+
+-- | Take and queue n emits.
+--
+-- >>> import Control.Monad.State.Lazy
+-- >>> toListM <$|> (takeQ 4 =<< qList [0..])
+-- [0,1,2,3]
+takeQ :: (MonadConc m) => Int -> Emitter m a -> CoEmitter m a
+takeQ n e = emitQ Unbounded $ \c -> glueES 0 c (takeE n e)

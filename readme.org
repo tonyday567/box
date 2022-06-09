@@ -349,6 +349,55 @@ takeEK :: (Monad m) => Int -> Emitter m a -> (Emitter (StateT Int m) a -> StateT
 takeEK n e k = flip evalStateT 0 . k . takeE n $ e
 #+end_src
 
+#+begin_src haskell
+takeEK :: (Monad m) => Int -> Emitter m a -> (Emitter (StateT Int m) a -> StateT Int m r) -> m r
+takeEK n e k = flip evalStateT 0 . k . takeE n $ e
+#+end_src
+
+
+#+begin_src haskell
+:t (\s0 k e -> flip evalStateT s0 . k $ e) :: (Monad m) => s -> (Emitter m a -> StateT s m a) -> Emitter m a -> m a
+#+end_src
+
+#+RESULTS:
+: (\s0 k e -> flip evalStateT s0 . k $ e) :: (Monad m) => s -> (Emitter m a -> StateT s m a) -> Emitter m a -> m a
+:   :: Monad m =>
+:      s -> (Emitter m a -> StateT s m a) -> Emitter m a -> m a
+
+(t f a -> s f a) -> t f a -> f a
+
+(t f ~> s f) -> t f ~> f
+
+#+begin_src haskell
+:t (\s0 k -> \e -> flip evalStateT s0 . k $ e)
+#+end_src
+
+#+RESULTS:
+: (\s0 k -> \e -> flip evalStateT s0 . k $ e)
+:   :: Monad m => s -> (t -> StateT s m a) -> t -> m a
+
+#+begin_src haskell
+:t Codensity
+#+end_src
+
+#+RESULTS:
+: Codensity :: (forall b. (a -> m b) -> m b) -> Codensity m a
+
+
+#+begin_src haskell :results output
+:t \c -> glue (foist lift c)
+:t takeE
+#+end_src
+
+#+RESULTS:
+: \c -> glue (foist lift c)
+:   :: (Monad (t f), MonadTrans t, Monad f) =>
+:      Committer f a -> Emitter (t f) a -> t f ()
+: takeE :: Monad m => Int -> Emitter m a -> Emitter (StateT Int m) a
+
+
+
+
 * Debugging
 
 #+begin_src haskell
