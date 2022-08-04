@@ -51,7 +51,7 @@ close x = runCodensity x id
 process :: forall a m r. (a -> m r) -> Codensity m a -> m r
 process f k = runCodensity k f
 
-infixr 3 <$|>
+infixr 0 <$|>
 
 -- | fmap then close over a Codensity
 --

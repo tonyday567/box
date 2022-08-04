@@ -13,9 +13,11 @@ module Box.Time
     Stamped (..),
     stampNow,
     stampE,
+    delayByWith,
+    delayBy,
     emitIn,
     replay,
-  )
+  delay)
 where
 
 import Box.Codensity
@@ -26,6 +28,11 @@ import Control.Monad.IO.Class
 import Data.Fixed (Fixed (MkFixed))
 import Data.Time
 import Prelude
+import Control.Monad.State.Lazy
+import Box.Functor
+import Box.Connectors
+import Data.Bifunctor
+import Data.Bool (bool)
 
 -- $setup
 -- >>> :set -XOverloadedStrings
@@ -77,33 +84,62 @@ stampE ::
   Emitter m (LocalTime, a)
 stampE = witherE (fmap Just . stampNow)
 
--- | Wait s seconds before emitting
-emitIn ::
-  Emitter IO (Double, a) ->
-  Emitter IO a
-emitIn =
-  witherE
-    ( \(s, a) -> do
-        sleep s
-        pure $ Just a
-    )
+-- | Convert emitter stamps to adjusted speed delays
+delayByWith :: (C.MonadConc m) => Double -> LocalTime -> Emitter m (LocalTime, a) -> CoEmitter m (Double, a)
+delayByWith speed t0 e = evalEmitter t0 $ Emitter $ do
+  r <- lift $ emit e
+  case r of
+    Nothing -> pure Nothing
+    Just a' -> do
+      t' <- get
+      let delta u = fromNominalDiffTime $ diffLocalTime u t' / toNominalDiffTime speed
+      put (fst a')
+      pure $ Just $ first delta a'
 
 -- | Convert emitter stamps to adjusted speed delays
-delay :: (Monad m, Alternative m) => Double -> Emitter m (LocalTime, b) -> m (Emitter m (Double, b))
-delay speed e = do
+delay :: (C.MonadConc m) => Double -> Int -> Emitter m (Double, a) -> CoEmitter m a
+delay speed skip e = evalEmitter skip $ Emitter $ do
+  skip' <- get
+  e <- lift $ emit e
+  case e of
+    Nothing -> pure Nothing
+    Just (secs, a) -> do
+      bool (put (skip' - 1)) (lift $ sleep (secs/speed)) (skip'==0)
+      pure (Just a)
+
+-- | Convert emitter stamps to adjusted speed delays
+delayBy :: (Alternative m, C.MonadConc m) => Double -> Emitter m (LocalTime, a) -> CoEmitter m (Double, a)
+delayBy speed e = Codensity $ \k -> do
   r <- emit e
   case r of
-    Nothing -> pure mempty
-    Just (t0, _) -> do
-      let delta u = fromNominalDiffTime $ diffLocalTime u t0 * toNominalDiffTime speed
-      pure (witherE (\(l, a) -> pure (Just (delta l, a))) e)
+    Nothing -> k mempty
+    Just a ->
+      close $ k <$> delayByWith speed (fst a) e
+
+-- | Wait s seconds before emitting, skipping delaying the first n emits
+emitIn ::
+  C.MonadConc m =>
+  Int ->
+  Emitter m (Double, a) ->
+  CoEmitter m a
+emitIn skip e =
+  evalEmitter skip $
+  witherE
+    ( \(s, a) -> do
+        i <- get
+        case i of
+          0 -> pure ()
+          x -> do
+            put (x-1)
+            sleep s
+        pure (Just a)
+    )
+    (foist lift e)
 
 -- | Replay a stamped emitter, adjusting the speed of the replay.
 --
 -- @
--- > glueN 4 showStdout <$|> replay 1 (Emitter $ sleep 0.1 >> Just <$> stampNow ())
+-- > glueN 4 showStdout <$|> replay 1 fst 0 (Emitter $ sleep 0.1 >> Just <$> stampNow ())
 -- @
-replay :: Double -> Emitter IO (LocalTime, a) -> CoEmitter IO a
-replay speed e = Codensity $ \eaction -> do
-  e' <- delay speed e
-  eaction (emitIn e')
+replay :: (C.MonadConc m, Alternative m) => Double -> Int -> Emitter m (LocalTime, a) -> CoEmitter m a
+replay speed skip e = emitIn skip =<< delayBy speed e
