@@ -100,8 +100,8 @@ delayByWith speed t0 e = evalEmitter t0 $ Emitter $ do
 delay :: (C.MonadConc m) => Double -> Int -> Emitter m (Double, a) -> CoEmitter m a
 delay speed skip e = evalEmitter skip $ Emitter $ do
   skip' <- get
-  e <- lift $ emit e
-  case e of
+  e' <- lift $ emit e
+  case e' of
     Nothing -> pure Nothing
     Just (secs, a) -> do
       bool (put (skip' - 1)) (lift $ sleep (secs/speed)) (skip'==0)
@@ -114,7 +114,7 @@ delayBy speed e = Codensity $ \k -> do
   case r of
     Nothing -> k mempty
     Just a ->
-      close $ k <$> delayByWith speed (fst a) e
+      close $ k <$> ((<>) <$> source 1 (pure (0,snd a)) <*> delayByWith speed (fst a) e)
 
 -- | Wait s seconds before emitting, skipping delaying the first n emits
 emitIn ::
@@ -128,18 +128,14 @@ emitIn skip e =
     ( \(s, a) -> do
         i <- get
         case i of
-          0 -> pure ()
+          0 -> sleep s
           x -> do
             put (x-1)
-            sleep s
         pure (Just a)
     )
     (foist lift e)
 
 -- | Replay a stamped emitter, adjusting the speed of the replay.
 --
--- @
--- > glueN 4 showStdout <$|> replay 1 fst 0 (Emitter $ sleep 0.1 >> Just <$> stampNow ())
--- @
 replay :: (C.MonadConc m, Alternative m) => Double -> Int -> Emitter m (LocalTime, a) -> CoEmitter m a
 replay speed skip e = emitIn skip =<< delayBy speed e
