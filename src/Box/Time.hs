@@ -10,18 +10,18 @@
 -- | Timing effects.
 module Box.Time
   ( sleep,
-    Stamped (..),
     stampNow,
     stampE,
+    Gap,
     gaps,
-    delayByWith,
-    delayBy,
-    emitIn,
+    fromGaps,
+    fromGapsNow,
+    gapEffect,
+    skip,
     replay,
-  delay, fromGaps, fromGapsNow, gapEffect, skip, Gap)
+  )
 where
 
-import Box.Codensity
 import Box.Emitter
 import Control.Applicative
 import Control.Monad.Conc.Class as C
@@ -30,10 +30,8 @@ import Data.Fixed (Fixed (MkFixed))
 import Data.Time
 import Prelude
 import Control.Monad.State.Lazy
-import Box.Functor
 import Box.Connectors
 import Data.Bifunctor
-import Data.Bool (bool)
 
 -- $setup
 -- >>> :set -XOverloadedStrings
@@ -60,13 +58,6 @@ toNominalDiffTime x =
       t1 = UTCTime (addDays days d0) (picosecondsToDiffTime $ floor (secs / 1.0e-12))
    in diffUTCTime t1 t0
 
--- | A value with a UTCTime annotation.
-data Stamped a = Stamped
-  { stamp :: !UTCTime,
-    value :: !a
-  }
-  deriving (Eq, Show, Read)
-
 -- | Add the current time
 stampNow :: (MonadConc m, MonadIO m) => a -> m (LocalTime, a)
 stampNow a = do
@@ -84,63 +75,6 @@ stampE ::
   Emitter m a ->
   Emitter m (LocalTime, a)
 stampE = witherE (fmap Just . stampNow)
-
--- | Convert emitter stamps to adjusted speed delays
---
--- > t0 <- utcToLocalTime utc <$> getCurrentTime
--- > toListM <$|> (delayByWith 0.001 t0 =<< stampE <$> (qList [1..4]))
--- [(1970.116,1),(2.3e-2,2),(1.1e-2,3),(9.0e-3,4)]
-delayByWith :: (C.MonadConc m) => Double -> LocalTime -> Emitter m (LocalTime, a) -> CoEmitter m (Double, a)
-delayByWith speed t0 e = evalEmitter t0 $ Emitter $ do
-  r <- lift $ emit e
-  case r of
-    Nothing -> pure Nothing
-    Just a' -> do
-      t' <- get
-      let delta u = fromNominalDiffTime $ diffLocalTime u t' / toNominalDiffTime speed
-      put (fst a')
-      pure $ Just $ first delta a'
-
--- | Convert emitter stamps to adjusted speed delays
---
--- The code below prints out the first 2 elemets of the list without a delay effect, and then prints out the remaining emissions with a 2 second delay.
---
--- > :set -XTupleSections
--- > import Data.Text (pack)
--- > glue (contramap (pack . show) toStdout) <$|> (delay 0.5 2 =<< (qList ((1,) <$> [1..4])))
--- 1
--- 2
--- 3
--- 4
-delay :: (C.MonadConc m) => Double -> Int -> Emitter m (Double, a) -> CoEmitter m a
-delay speed skip e = evalEmitter skip $ Emitter $ do
-  skip' <- get
-  e' <- lift $ emit e
-  case e' of
-    Nothing -> pure Nothing
-    Just (secs, a) -> do
-      bool (put (skip' - 1)) (lift $ sleep (secs/speed)) (skip'==0)
-      pure (Just a)
-
--- | Convert emitter stamps to adjusted speed delays
---
--- The code below prints out the emissions with a 2 second delay.
---
--- > :set -XTupleSections
--- > import Data.Text (pack)
--- > glue (contramap (pack . show) toStdout) <$|> (delayBy 0.5 =<< (qList ((1,) <$> [1..4])))
--- 1
--- 2
--- 3
--- 4
-delayBy :: (Alternative m, C.MonadConc m) => Double -> Emitter m (LocalTime, a) -> CoEmitter m (Double, a)
-delayBy speed e = Codensity $ \k -> do
-  r <- emit e
-  case r of
-    Nothing -> k mempty
-    Just a ->
-      close $ k <$> ((<>) <$> source 1 (pure (0,snd a)) <*> delayByWith speed (fst a) e)
-
 
 type Gap = Double
 
@@ -180,25 +114,6 @@ fromGapsNow :: (MonadIO m, MonadConc m) => Emitter m (Gap, a) -> CoEmitter m (Lo
 fromGapsNow e = do
   t0 <- liftIO getCurrentTime
   fromGaps (utcToLocalTime utc t0) e
-
--- | Wait s seconds before emitting, skipping delaying the first n emits
-emitIn ::
-  C.MonadConc m =>
-  Int ->
-  Emitter m (Double, a) ->
-  CoEmitter m a
-emitIn skip e =
-  evalEmitter skip $
-  witherE
-    ( \(s, a) -> do
-        i <- get
-        case i of
-          0 -> sleep s
-          x -> do
-            put (x-1)
-        pure (Just a)
-    )
-    (foist lift e)
 
 -- | Wait s seconds before emitting
 gapEffect ::
