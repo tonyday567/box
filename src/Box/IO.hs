@@ -22,8 +22,13 @@ module Box.IO
     handleC,
     fileE,
     fileC,
-  fileEText, fileEBS, fileCText, fileCBS)
-where
+    fileEText,
+    fileEBS,
+    fileCText,
+    fileCBS,
+    logConsoleC,
+    logConsoleE,
+    pauser, changer, quit, restart) where
 
 import Box.Codensity
 import Box.Committer
@@ -42,6 +47,9 @@ import System.IO as IO
 import Prelude
 import Data.ByteString.Char8 as Char8
 import Data.String
+import Control.Concurrent.Classy.Async
+import Data.Function
+import Control.Monad.State.Lazy
 
 -- $setup
 -- >>> :set -XOverloadedStrings
@@ -191,3 +199,67 @@ refEmitter xs = do
             C.writeIORef ref xs'
             pure $ Just x
   pure e
+
+-- | simple console logger for rough testing
+logConsoleE :: Show a => String -> Emitter IO a -> Emitter IO a
+logConsoleE label e = Emitter $ do
+  a <- emit e
+  Prelude.putStrLn (label <> show a)
+  pure a
+
+-- | simple console logger for rough testing
+logConsoleC :: Show a => String -> Committer IO a -> Committer IO a
+logConsoleC label c = Committer $ \a -> do
+  Prelude.putStrLn (label <> show a)
+  commit c a
+
+-- | Pause an emitter based on a Bool emitter
+pauser :: Emitter IO Bool -> Emitter IO a -> Emitter IO a
+pauser b e = Emitter $ fix $ \rec -> do
+  b' <- emit b
+  case b' of
+    Nothing -> pure Nothing
+    Just False -> emit e
+    Just True -> rec
+
+-- | Create an emitter that indicates when another emitter has changed.
+changer :: (Eq a, C.MonadConc m) => a -> Emitter m a -> CoEmitter m Bool
+changer a0 e = evalEmitter a0 $ Emitter $ do
+  r <- lift $ emit e
+  case r of
+    Nothing -> pure Nothing
+    Just r' -> do
+      r'' <- get
+      put r'
+      pure (Just (r'==r''))
+
+-- | quit a process based on a Bool emitter
+--
+-- > quit <$> speedEffect (pure 2) <$> (resetGap 5) <*|> pure io
+-- 0
+-- 1
+-- 2
+-- 3
+-- 4
+-- Left True
+quit :: Emitter IO Bool -> IO a -> IO (Either Bool a)
+quit flag io = race (checkE flag) io
+
+checkE :: C.MonadConc m => Emitter m Bool -> m Bool
+checkE e = fix $ \rec -> do
+  a <- emit e
+  -- atomically $ check (a == Just False)
+  case a of
+    Nothing -> pure False
+    Just True -> pure True
+    Just False -> rec
+
+-- | restart a process if flagged by a Bool emitter
+--
+restart :: Emitter IO Bool -> IO a -> IO (Either Bool a)
+restart flag io = fix $ \rec -> do
+  res <- quit flag io
+  case res of
+    Left True -> rec
+    Left False -> pure (Left False)
+    Right r -> pure (Right r)

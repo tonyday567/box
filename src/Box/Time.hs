@@ -19,7 +19,7 @@ module Box.Time
     gapEffect,
     skip,
     replay,
-  )
+  gapSkipEffect, speedEffect, speedSkipEffect)
 where
 
 import Box.Emitter
@@ -32,6 +32,7 @@ import Prelude
 import Control.Monad.State.Lazy
 import Box.Connectors
 import Data.Bifunctor
+import Data.Bool
 
 -- $setup
 -- >>> :set -XOverloadedStrings
@@ -115,17 +116,69 @@ fromGapsNow e = do
   t0 <- liftIO getCurrentTime
   fromGaps (utcToLocalTime utc t0) e
 
--- | Wait s seconds before emitting
+-- | Convert a (Gap,a) emitter to an a emitter, with delays between emits of the gap.
 gapEffect ::
   C.MonadConc m =>
   Emitter m (Gap, a) ->
   Emitter m a
-gapEffect =
-  witherE
-    ( \(s, a) -> do
-        sleep s
-        pure (Just a)
-    )
+gapEffect as =
+  Emitter $ do
+    a <- emit as
+    case a of
+      (Just (s, a')) -> sleep s >> pure (Just a')
+      _ -> pure Nothing
+
+speedEffect ::
+  C.MonadConc m =>
+  Emitter m Gap ->
+  Emitter m (Gap, a) ->
+  Emitter m a
+speedEffect speeds as =
+  Emitter $ do
+    s <- emit speeds
+    a <- emit as
+    case (s,a) of
+      (Just s', Just (g, a')) -> sleep (g/s') >> pure (Just a')
+      _ -> pure Nothing
+
+-- | Only add a Gap effect if greater than the Int emitter
+--
+-- effect is similar to a fast-forward of the first n emits
+gapSkipEffect ::
+  C.MonadConc m =>
+  Emitter m Int ->
+  Emitter m Gap ->
+  CoEmitter m Gap
+gapSkipEffect n e = evalEmitter 0 $ Emitter $ do
+    n' <- lift $ emit n
+    e' <- lift $ emit e
+    count <- get
+    modify (1+)
+    case (n', e') of
+      (_, Nothing) -> pure Nothing
+      (Nothing, _) -> pure Nothing
+      (Just n'', Just e'') ->
+        pure $ Just (bool e'' 0 (n'' >= count))
+
+-- | Only add a Gap if greater than the Int emitter
+--
+-- effect is similar to a fast-forward of the first n emits
+speedSkipEffect ::
+  C.MonadConc m =>
+  Emitter m (Int, Gap) ->
+  Emitter m (Gap, a) ->
+  CoEmitter m a
+speedSkipEffect p e = evalEmitter 0 $ Emitter $ do
+    p' <- lift $ emit p
+    e' <- lift $ emit e
+    count <- get
+    modify (1+)
+    case (p', e') of
+      (_, Nothing) -> pure Nothing
+      (Nothing, _) -> pure Nothing
+      (Just (n,s), Just (g,a)) ->
+        sleep (bool (g/s) 0 (n >= count)) >> pure (Just a)
+
 
 skip :: (C.MonadConc m) => Int -> Emitter m (Gap, a) -> CoEmitter m (Gap, a)
 skip sk e = evalEmitter (sk+1) $ Emitter $ do
