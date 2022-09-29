@@ -54,6 +54,11 @@ import Data.Text as Text hiding (null)
 import Data.Text.IO as Text
 import System.IO as IO
 import Prelude
+import Data.ByteString.Char8 as Char8
+import Data.String
+import Control.Concurrent.Classy.Async
+import Data.Function
+import Control.Monad.State.Lazy
 
 -- $setup
 -- >>> :set -XOverloadedStrings
@@ -135,7 +140,7 @@ handleE action h = Emitter $ do
   l :: (Either IOException a) <- try (action h)
   pure $ case l of
     Left _ -> Nothing
-    Right a -> bool (Just a) Nothing (a == "")
+    Right a -> bool (Just a) Nothing (a=="")
 
 -- | Commit lines of Text to a handle.
 handleC :: (Handle -> a -> IO ()) -> Handle -> Committer IO a
