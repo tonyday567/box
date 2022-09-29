@@ -10,11 +10,14 @@
 -- | Various ways to connect things up.
 module Box.Connectors
   ( qList,
+    qListWith,
     popList,
     pushList,
     pushListN,
     sink,
+    sinkWith,
     source,
+    sourceWith,
     forkEmit,
     bufferCommitter,
     bufferEmitter,
@@ -22,7 +25,8 @@ module Box.Connectors
     concurrentC,
     takeQ,
     evalEmitter,
-  newE)
+    evalEmitterWith,
+  )
 where
 
 import Box.Box
@@ -44,12 +48,19 @@ import Prelude
 -- >>> import Data.Bool
 -- >>> import Control.Monad
 
--- | Queue a list.
+-- | Queue a list Unbounded.
 --
 -- >>> pushList <$|> qList [1,2,3]
 -- [1,2,3]
 qList :: [a] -> CoEmitter IO a
-qList xs = emitQ Unbounded (\c -> fmap and (traverse (commit c) xs))
+qList xs = qListWith Unbounded xs
+
+-- | Queue a list with an explicit 'Queue'.
+--
+-- >>> pushList <$|> qListWith Single [1,2,3]
+-- [1,2,3]
+qListWith :: Queue a -> [a] -> CoEmitter IO a
+qListWith q xs = emitQ q (\c -> fmap and (traverse (commit c) xs))
 
 -- | Directly supply a list to a committer action, via pop.
 --
@@ -82,13 +93,19 @@ sink1 f e = do
     Nothing -> pure ()
     Just a' -> f a'
 
--- | Create a finite Committer.
+-- FIXME: This doctest sometimes fails with the last value not being printed. Hypothesis: the pipe collapses before the console print effect happens.
+
+-- | Create a finite Committer Unbounded Queue.
 --
 -- > glue <$> sink 2 print <*|> qList [1..3]
 -- 1
 -- 2
 sink :: Int -> (a -> IO ()) -> CoCommitter IO a
-sink n f = commitQ Unbounded $ replicateM_ n . sink1 f
+sink n f = sinkWith Unbounded n f
+
+-- | Create a finite Committer Queue.
+sinkWith :: Queue a -> Int -> (a -> IO ()) -> CoCommitter IO a
+sinkWith q n f = commitQ q $ replicateM_ n . sink1 f
 
 -- singleton source
 source1 :: (Monad m) => m a -> Committer m a -> m ()
@@ -96,13 +113,21 @@ source1 a c = do
   a' <- a
   void $ commit c a'
 
--- | Create a finite Emitter.
+-- | Create a finite (Co)Emitter Unbounded Queue.
 --
 -- >>> glue toStdout <$|> source 2 (pure "hi")
 -- hi
 -- hi
 source :: Int -> IO a -> CoEmitter IO a
-source n f = emitQ Unbounded $ replicateM_ n . source1 f
+source n f = sourceWith Unbounded n f
+
+-- | Create a finite (Co)Emitter Unbounded Queue.
+--
+-- >>> glue toStdout <$|> sourceWith Single 2 (pure "hi")
+-- hi
+-- hi
+sourceWith :: Queue a -> Int -> IO a -> CoEmitter IO a
+sourceWith q n f = emitQ q $ replicateM_ n . source1 f
 
 -- | Glues an emitter to a committer, then resupplies the emitter.
 --
@@ -187,13 +212,10 @@ mergeC ec =
 -- | Take and queue n emits.
 --
 -- >>> import Control.Monad.State.Lazy
--- >>> toListM <$|> (takeQ 4 =<< qList [0..])
+-- >>> toListM <$|> (takeQ Single 4 =<< qList [0..])
 -- [0,1,2,3]
-takeQ :: Int -> Emitter IO a -> CoEmitter IO a
-takeQ n e = emitQ Unbounded $ \c -> glueES 0 c (takeE n e)
-
-newE :: Emitter IO a -> CoEmitter IO a
-newE e = emitQ New $ \c -> glue c e
+takeQ :: Queue a -> Int -> Emitter IO a -> CoEmitter IO a
+takeQ q n e = emitQ q $ \c -> glueES 0 c (takeE n e)
 
 -- | queue a stateful emitter, supplying initial state
 --
@@ -201,4 +223,8 @@ newE e = emitQ New $ \c -> glue c e
 -- >>> toListM <$|> (evalEmitter 0 <$> takeE 4 =<< qList [0..])
 -- [0,1,2,3]
 evalEmitter :: s -> Emitter (StateT s IO) a -> CoEmitter IO a
-evalEmitter s e = emitQ Unbounded $ \c -> glueES s c e
+evalEmitter s e = evalEmitterWith Unbounded s e
+
+-- | queue a stateful emitter, supplying initial state
+evalEmitterWith :: Queue a -> s -> Emitter (StateT s IO) a -> CoEmitter IO a
+evalEmitterWith q s e = emitQ q $ \c -> glueES s c e

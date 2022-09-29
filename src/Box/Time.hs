@@ -19,19 +19,22 @@ module Box.Time
     gapEffect,
     skip,
     replay,
-  gapSkipEffect, speedEffect, speedSkipEffect)
+    gapSkipEffect,
+    speedEffect,
+    speedSkipEffect,
+  )
 where
 
+import Box.Connectors
 import Box.Emitter
 import Control.Applicative
 import Control.Concurrent
+import Control.Monad.State.Lazy
+import Data.Bifunctor
+import Data.Bool
 import Data.Fixed (Fixed (MkFixed))
 import Data.Time
 import Prelude
-import Control.Monad.State.Lazy
-import Box.Connectors
-import Data.Bifunctor
-import Data.Bool
 
 -- $setup
 -- >>> :set -XOverloadedStrings
@@ -93,7 +96,6 @@ gaps e = evalEmitter Nothing $ Emitter $ do
       pure $ Just $ first delta a'
 
 -- | Convert gaps in seconds to stamps starting from an initial supplied 'LocalTime'
---
 fromGaps :: LocalTime -> Emitter IO (Gap, a) -> CoEmitter IO (LocalTime, a)
 fromGaps t0 e = evalEmitter t0 $ Emitter $ do
   r <- lift $ emit e
@@ -133,8 +135,8 @@ speedEffect speeds as =
   Emitter $ do
     s <- emit speeds
     a <- emit as
-    case (s,a) of
-      (Just s', Just (g, a')) -> sleep (g/s') >> pure (Just a')
+    case (s, a) of
+      (Just s', Just (g, a')) -> sleep (g / s') >> pure (Just a')
       _ -> pure Nothing
 
 -- | Only add a Gap effect if greater than the Int emitter
@@ -145,15 +147,15 @@ gapSkipEffect ::
   Emitter IO Gap ->
   CoEmitter IO Gap
 gapSkipEffect n e = evalEmitter 0 $ Emitter $ do
-    n' <- lift $ emit n
-    e' <- lift $ emit e
-    count <- get
-    modify (1+)
-    case (n', e') of
-      (_, Nothing) -> pure Nothing
-      (Nothing, _) -> pure Nothing
-      (Just n'', Just e'') ->
-        pure $ Just (bool e'' 0 (n'' >= count))
+  n' <- lift $ emit n
+  e' <- lift $ emit e
+  count <- get
+  modify (1 +)
+  case (n', e') of
+    (_, Nothing) -> pure Nothing
+    (Nothing, _) -> pure Nothing
+    (Just n'', Just e'') ->
+      pure $ Just (bool e'' 0 (n'' >= count))
 
 -- | Only add a Gap if greater than the Int emitter
 --
@@ -163,32 +165,32 @@ speedSkipEffect ::
   Emitter IO (Gap, a) ->
   CoEmitter IO a
 speedSkipEffect p e = evalEmitter 0 $ Emitter $ do
-    p' <- lift $ emit p
-    e' <- lift $ emit e
-    count <- get
-    modify (1+)
-    case (p', e') of
-      (_, Nothing) -> pure Nothing
-      (Nothing, _) -> pure Nothing
-      (Just (n,s), Just (g,a)) ->
-        lift $ sleep (bool (g/s) 0 (n >= count)) >> pure (Just a)
+  p' <- lift $ emit p
+  e' <- lift $ emit e
+  count <- get
+  modify (1 +)
+  case (p', e') of
+    (_, Nothing) -> pure Nothing
+    (Nothing, _) -> pure Nothing
+    (Just (n, s), Just (g, a)) ->
+      lift $ sleep (bool (g / s) 0 (n >= count)) >> pure (Just a)
 
 skip :: Int -> Emitter IO (Gap, a) -> CoEmitter IO (Gap, a)
-skip sk e = evalEmitter (sk+1) $ Emitter $ do
+skip sk e = evalEmitter (sk + 1) $ Emitter $ do
   skip' <- get
   e' <- lift $ emit e
   case e' of
     Nothing -> pure Nothing
     Just (secs, a) -> do
       case skip' of
-        0 -> pure (Just (secs,a))
+        0 -> pure (Just (secs, a))
         _ -> do
           put (skip' - 1)
-          pure (Just (0,a))
+          pure (Just (0, a))
 
 -- | Replay a stamped emitter, adjusting the speed of the replay.
 --
 -- > toListM . stampE <$|> (replay 0.1 1 =<< (fromGapsNow =<< (qList (zip (0:repeat 1) [1..4]))))
 -- [(2022-08-31 02:29:39.643831,1),(2022-08-31 02:29:39.643841,2),(2022-08-31 02:29:39.746998,3),(2022-08-31 02:29:39.849615,4)]
 replay :: Double -> Int -> Emitter IO (LocalTime, a) -> CoEmitter IO a
-replay speed sk e = gapEffect . fmap (first (speed*)) <$> (skip sk =<< gaps e)
+replay speed sk e = gapEffect . fmap (first (speed *)) <$> (skip sk =<< gaps e)

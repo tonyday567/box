@@ -28,27 +28,32 @@ module Box.IO
     fileCBS,
     logConsoleC,
     logConsoleE,
-    pauser, changer, quit, restart) where
+    pauser,
+    changer,
+    quit,
+    restart,
+  )
+where
 
 import Box.Codensity
 import Box.Committer
 import Box.Connectors
 import Box.Emitter
-import Data.IORef
+import Control.Concurrent.Async
 import Control.Exception
+import Control.Monad.State.Lazy
 import Data.Bool
+import Data.ByteString.Char8 as Char8
 import Data.Foldable
+import Data.Function
 import Data.Functor.Contravariant
+import Data.IORef
 import qualified Data.Sequence as Seq
+import Data.String
 import Data.Text as Text hiding (null)
 import Data.Text.IO as Text
 import System.IO as IO
 import Prelude
-import Data.ByteString.Char8 as Char8
-import Data.String
-import Control.Concurrent.Async
-import Data.Function
-import Control.Monad.State.Lazy
 
 -- $setup
 -- >>> :set -XOverloadedStrings
@@ -89,6 +94,8 @@ toStdout = Committer $ \a -> Text.putStrLn a >> pure True
 fromStdinN :: Int -> CoEmitter IO Text
 fromStdinN n = source n Text.getLine
 
+-- FIXME: This doctest sometimes fails with the last value not being printed. Hypothesis: the pipe collapses before the console print effect happens.
+
 -- | Finite console committer
 --
 -- > glue <$> contramap (pack . show) <$> (toStdoutN 2) <*|> qList [1..3]
@@ -128,7 +135,7 @@ handleE action h = Emitter $ do
   l :: (Either IOException a) <- try (action h)
   pure $ case l of
     Left _ -> Nothing
-    Right a -> bool (Just a) Nothing (a=="")
+    Right a -> bool (Just a) Nothing (a == "")
 
 -- | Commit lines of Text to a handle.
 handleC :: (Handle -> a -> IO ()) -> Handle -> Committer IO a
@@ -144,10 +151,14 @@ handleC action h = Committer $ \a -> do
 
 -- | Emit lines of Text from a file.
 fileE :: FilePath -> BufferMode -> IOMode -> (Handle -> Emitter IO a) -> CoEmitter IO a
-fileE fp b m action = Codensity $ \eio -> withFile fp m
-  (\h -> do
-      hSetBuffering h b
-      eio (action h))
+fileE fp b m action = Codensity $ \eio ->
+  withFile
+    fp
+    m
+    ( \h -> do
+        hSetBuffering h b
+        eio (action h)
+    )
 
 fileEText :: FilePath -> BufferMode -> CoEmitter IO Text
 fileEText fp b = fileE fp b ReadMode (handleE Text.hGetLine)
@@ -157,10 +168,14 @@ fileEBS fp b = fileE fp b ReadMode (handleE Char8.hGetLine)
 
 -- | Commit lines of Text to a file.
 fileC :: FilePath -> IOMode -> BufferMode -> (Handle -> Committer IO a) -> CoCommitter IO a
-fileC fp m b action = Codensity $ \cio -> withFile fp m
-  (\h -> do
-      hSetBuffering h b
-      cio (action h))
+fileC fp m b action = Codensity $ \cio ->
+  withFile
+    fp
+    m
+    ( \h -> do
+        hSetBuffering h b
+        cio (action h)
+    )
 
 fileCText :: FilePath -> BufferMode -> IOMode -> CoCommitter IO Text
 fileCText fp m b = fileC fp b m (handleC Text.hPutStrLn)
@@ -231,7 +246,7 @@ changer a0 e = evalEmitter a0 $ Emitter $ do
     Just r' -> do
       r'' <- get
       put r'
-      pure (Just (r'==r''))
+      pure (Just (r' == r''))
 
 -- | quit a process based on a Bool emitter
 --
@@ -255,7 +270,6 @@ checkE e = fix $ \rec -> do
     Just False -> rec
 
 -- | restart a process if flagged by a Bool emitter
---
 restart :: Emitter IO Bool -> IO a -> IO (Either Bool a)
 restart flag io = fix $ \rec -> do
   res <- quit flag io

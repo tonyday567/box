@@ -1,7 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StrictData #-}
@@ -18,9 +17,10 @@ module Box.Queue
     fromAction,
     emitQ,
     commitQ,
-  fromActionWith,
-  toBoxM,
-  toBoxSTM)
+    fromActionWith,
+    toBoxM,
+    toBoxSTM,
+  )
 where
 
 import Box.Box
