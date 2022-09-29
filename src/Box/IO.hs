@@ -54,11 +54,6 @@ import Data.Text as Text hiding (null)
 import Data.Text.IO as Text
 import System.IO as IO
 import Prelude
-import Data.ByteString.Char8 as Char8
-import Data.String
-import Control.Concurrent.Classy.Async
-import Data.Function
-import Control.Monad.State.Lazy
 
 -- $setup
 -- >>> :set -XOverloadedStrings
