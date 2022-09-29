@@ -57,6 +57,7 @@ import Control.Monad.State.Lazy
 -- >>> import Data.Bool
 -- >>> import Data.Text (Text, pack)
 -- >>> import Data.Functor.Contravariant
+-- attempting to use module ‘main:Box’ (/Users/tonyday/haskell/box/src/Box.hs) which is not loaded
 
 -- * console
 
@@ -91,7 +92,7 @@ fromStdinN n = source n Text.getLine
 
 -- | Finite console committer
 --
--- >>> glue <$> contramap (pack . show) <$> (toStdoutN 2) <*|> qList [1..3]
+-- > glue <$> contramap (pack . show) <$> (toStdoutN 2) <*|> qList [1..3]
 -- 1
 -- 2
 toStdoutN :: Int -> CoCommitter IO Text
@@ -103,6 +104,7 @@ toStdoutN n = sink n Text.putStrLn
 -- 1
 -- 1
 -- hippo
+-- 2
 -- 2
 readStdin :: Read a => Emitter IO a
 readStdin = witherE (pure . either (const Nothing) Just) . readE $ fromStdin
