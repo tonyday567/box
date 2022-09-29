@@ -10,11 +10,14 @@
 -- | Various ways to connect things up.
 module Box.Connectors
   ( qList,
+    qListWith,
     popList,
     pushList,
     pushListN,
     sink,
+    sinkWith,
     source,
+    sourceWith,
     forkEmit,
     bufferCommitter,
     bufferEmitter,
@@ -22,7 +25,8 @@ module Box.Connectors
     concurrentC,
     takeQ,
     evalEmitter,
-  newE)
+    evalEmitterWith,
+  )
 where
 
 import Box.Box
@@ -31,8 +35,7 @@ import Box.Committer
 import Box.Emitter
 import Box.Functor
 import Box.Queue
-import Control.Concurrent.Classy.Async as C
-import Control.Monad.Conc.Class (MonadConc)
+import Control.Concurrent.Async
 import Control.Monad.State.Lazy
 import Data.Foldable
 import qualified Data.Sequence as Seq
@@ -45,12 +48,19 @@ import Prelude
 -- >>> import Data.Bool
 -- >>> import Control.Monad
 
--- | Queue a list.
+-- | Queue a list Unbounded.
 --
 -- >>> pushList <$|> qList [1,2,3]
 -- [1,2,3]
-qList :: (MonadConc m) => [a] -> CoEmitter m a
-qList xs = emitQ Unbounded (\c -> fmap and (traverse (commit c) xs))
+qList :: [a] -> CoEmitter IO a
+qList xs = qListWith Unbounded xs
+
+-- | Queue a list with an explicit 'Queue'.
+--
+-- >>> pushList <$|> qListWith Single [1,2,3]
+-- [1,2,3]
+qListWith :: Queue a -> [a] -> CoEmitter IO a
+qListWith q xs = emitQ q (\c -> fmap and (traverse (commit c) xs))
 
 -- | Directly supply a list to a committer action, via pop.
 --
@@ -83,13 +93,19 @@ sink1 f e = do
     Nothing -> pure ()
     Just a' -> f a'
 
--- | Create a finite Committer.
+-- FIXME: This doctest sometimes fails with the last value not being printed. Hypothesis: the pipe collapses before the console print effect happens.
+
+-- | Create a finite Committer Unbounded Queue.
 --
--- >>> glue <$> sink 2 print <*|> qList [1..3]
+-- > glue <$> sink 2 print <*|> qList [1..3]
 -- 1
 -- 2
-sink :: (MonadConc m) => Int -> (a -> m ()) -> CoCommitter m a
-sink n f = commitQ Unbounded $ replicateM_ n . sink1 f
+sink :: Int -> (a -> IO ()) -> CoCommitter IO a
+sink n f = sinkWith Unbounded n f
+
+-- | Create a finite Committer Queue.
+sinkWith :: Queue a -> Int -> (a -> IO ()) -> CoCommitter IO a
+sinkWith q n f = commitQ q $ replicateM_ n . sink1 f
 
 -- singleton source
 source1 :: (Monad m) => m a -> Committer m a -> m ()
@@ -97,13 +113,21 @@ source1 a c = do
   a' <- a
   void $ commit c a'
 
--- | Create a finite Emitter.
+-- | Create a finite (Co)Emitter Unbounded Queue.
 --
 -- >>> glue toStdout <$|> source 2 (pure "hi")
 -- hi
 -- hi
-source :: (MonadConc m) => Int -> m a -> CoEmitter m a
-source n f = emitQ Unbounded $ replicateM_ n . source1 f
+source :: Int -> IO a -> CoEmitter IO a
+source n f = sourceWith Unbounded n f
+
+-- | Create a finite (Co)Emitter Unbounded Queue.
+--
+-- >>> glue toStdout <$|> sourceWith Single 2 (pure "hi")
+-- hi
+-- hi
+sourceWith :: Queue a -> Int -> IO a -> CoEmitter IO a
+sourceWith q n f = emitQ q $ replicateM_ n . source1 f
 
 -- | Glues an emitter to a committer, then resupplies the emitter.
 --
@@ -121,11 +145,11 @@ forkEmit e c =
     pure a
 
 -- | Buffer a committer.
-bufferCommitter :: (MonadConc m) => Committer m a -> CoCommitter m a
+bufferCommitter :: Committer IO a -> CoCommitter IO a
 bufferCommitter c = Codensity $ \caction -> queueL Unbounded caction (glue c)
 
 -- | Buffer an emitter.
-bufferEmitter :: (MonadConc m) => Emitter m a -> CoEmitter m a
+bufferEmitter :: Emitter IO a -> CoEmitter IO a
 bufferEmitter e = Codensity $ \eaction -> queueR Unbounded (`glue` e) eaction
 
 -- | Concurrently run two emitters.
@@ -142,13 +166,12 @@ bufferEmitter e = Codensity $ \eaction -> queueR Unbounded (`glue` e) eaction
 -- > (c,l) <- refCommitter :: IO (Committer IO Int, IO [Int])
 -- > close $ glue c <$> (join $ concurrentE Single <$> qList [1..30] <*> qList [40..60])
 concurrentE ::
-  MonadConc f =>
   Queue a ->
-  Emitter f a ->
-  Emitter f a ->
-  CoEmitter f a
+  Emitter IO a ->
+  Emitter IO a ->
+  CoEmitter IO a
 concurrentE q e e' =
-  Codensity $ \eaction -> snd . fst <$> C.concurrently (queue q (`glue` e) eaction) (queue q (`glue` e') eaction)
+  Codensity $ \eaction -> snd . fst <$> concurrently (queue q (`glue` e) eaction) (queue q (`glue` e') eaction)
 
 -- | Concurrently run two committers.
 --
@@ -163,24 +186,23 @@ concurrentE q e e' =
 -- slow: 1
 -- slow: 2
 -- slow: 3
-concurrentC :: (MonadConc m) => Queue a -> Committer m a -> Committer m a -> CoCommitter m a
+concurrentC :: Queue a -> Committer IO a -> Committer IO a -> CoCommitter IO a
 concurrentC q c c' = mergeC <$> eitherC q c c'
 
 eitherC ::
-  (MonadConc m) =>
   Queue a ->
-  Committer m a ->
-  Committer m a ->
-  Codensity m (Either (Committer m a) (Committer m a))
+  Committer IO a ->
+  Committer IO a ->
+  Codensity IO (Either (Committer IO a) (Committer IO a))
 eitherC q cl cr =
   Codensity $
     \kk ->
       fst
-        <$> C.concurrently
+        <$> concurrently
           (queueL q (kk . Left) (glue cl))
           (queueL q (kk . Right) (glue cr))
 
-mergeC :: Either (Committer m a) (Committer m a) -> Committer m a
+mergeC :: Either (Committer IO a) (Committer IO a) -> Committer IO a
 mergeC ec =
   Committer $ \a ->
     case ec of
@@ -190,18 +212,19 @@ mergeC ec =
 -- | Take and queue n emits.
 --
 -- >>> import Control.Monad.State.Lazy
--- >>> toListM <$|> (takeQ 4 =<< qList [0..])
+-- >>> toListM <$|> (takeQ Single 4 =<< qList [0..])
 -- [0,1,2,3]
-takeQ :: (MonadConc m) => Int -> Emitter m a -> CoEmitter m a
-takeQ n e = emitQ Unbounded $ \c -> glueES 0 c (takeE n e)
-
-newE :: (MonadConc m) => Emitter m a -> CoEmitter m a
-newE e = emitQ New $ \c -> glue c e
+takeQ :: Queue a -> Int -> Emitter IO a -> CoEmitter IO a
+takeQ q n e = emitQ q $ \c -> glueES 0 c (takeE n e)
 
 -- | queue a stateful emitter, supplying initial state
 --
 -- >>> import Control.Monad.State.Lazy
 -- >>> toListM <$|> (evalEmitter 0 <$> takeE 4 =<< qList [0..])
 -- [0,1,2,3]
-evalEmitter :: (MonadConc m) => s -> Emitter (StateT s m) a -> CoEmitter m a
-evalEmitter s e = emitQ Unbounded $ \c -> glueES s c e
+evalEmitter :: s -> Emitter (StateT s IO) a -> CoEmitter IO a
+evalEmitter s e = evalEmitterWith Unbounded s e
+
+-- | queue a stateful emitter, supplying initial state
+evalEmitterWith :: Queue a -> s -> Emitter (StateT s IO) a -> CoEmitter IO a
+evalEmitterWith q s e = emitQ q $ \c -> glueES s c e

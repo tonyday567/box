@@ -103,8 +103,7 @@ witherC f c = Committer go
 -- 2
 -- 3
 listC :: (Monad m) => Committer m a -> Committer m [a]
-listC c = Committer $ \as ->
-  or <$> sequence (commit c <$> as)
+listC c = Committer $ fmap or . mapM (commit c)
 
 -- | Push to a state sequence.
 --

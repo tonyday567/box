@@ -1,7 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StrictData #-}
@@ -18,9 +17,10 @@ module Box.Queue
     fromAction,
     emitQ,
     commitQ,
-  fromActionWith,
-  toBoxM,
-  toBoxSTM)
+    fromActionWith,
+    toBoxM,
+    toBoxSTM,
+  )
 where
 
 import Box.Box
@@ -29,10 +29,9 @@ import Box.Committer
 import Box.Emitter
 import Box.Functor
 import Control.Applicative
-import Control.Concurrent.Classy.Async as C
-import Control.Concurrent.Classy.STM as C
+import Control.Concurrent.Async
+import Control.Concurrent.STM
 import Control.Monad.Catch as C
-import Control.Monad.Conc.Class as C
 import Prelude
 
 -- $setup
@@ -50,7 +49,7 @@ data Queue a
   | New
 
 -- | create a queue, supplying the ends and a sealing function.
-ends :: MonadSTM stm => Queue a -> stm (a -> stm (), stm a)
+ends :: Queue a -> STM (a -> STM (), STM a)
 ends qu =
   case qu of
     Bounded n -> do
@@ -74,7 +73,7 @@ ends qu =
       pure (write, readTBQueue q)
 
 -- | write to a queue, checking the seal
-writeCheck :: (MonadSTM stm) => TVar stm Bool -> (a -> stm ()) -> a -> stm Bool
+writeCheck :: TVar Bool -> (a -> STM ()) -> a -> STM Bool
 writeCheck sealed i a = do
   b <- readTVar sealed
   if b
@@ -84,23 +83,22 @@ writeCheck sealed i a = do
       pure True
 
 -- | read from a queue, and retry if not sealed
-readCheck :: MonadSTM stm => TVar stm Bool -> stm a -> stm (Maybe a)
+readCheck :: TVar Bool -> STM a -> STM (Maybe a)
 readCheck sealed o =
   (Just <$> o)
     <|> ( do
             b <- readTVar sealed
-            C.check b
+            check b
             pure Nothing
         )
 
 -- | turn a queue into a box (and a seal)
 toBoxSTM ::
-  (MonadSTM stm) =>
   Queue a ->
-  stm (Box stm a a, stm ())
+  STM (Box STM a a, STM ())
 toBoxSTM q = do
   (i, o) <- ends q
-  sealed <- newTVarN "sealed" False
+  sealed <- newTVar False
   let seal = writeTVar sealed True
   pure
     ( Box
@@ -111,90 +109,85 @@ toBoxSTM q = do
 
 -- | turn a queue into a box (and a seal), and lift from stm to the underlying monad.
 toBoxM ::
-  (MonadConc m) =>
   Queue a ->
-  m (Box m a a, m ())
+  IO (Box IO a a, IO ())
 toBoxM q = do
   (b, s) <- atomically $ toBoxSTM q
   pure (liftB b, atomically s)
 
 -- | run two actions concurrently, but wait and return on the left result.
-concurrentlyLeft :: MonadConc m => m a -> m b -> m a
+concurrentlyLeft :: IO a -> IO b -> IO a
 concurrentlyLeft left right =
-  C.withAsync left $ \a ->
-    C.withAsync right $ \_ ->
-      C.wait a
+  withAsync left $ \a ->
+    withAsync right $ \_ ->
+      wait a
 
 -- | run two actions concurrently, but wait and return on the right result.
-concurrentlyRight :: MonadConc m => m a -> m b -> m b
+concurrentlyRight :: IO a -> IO b -> IO b
 concurrentlyRight left right =
-  C.withAsync left $ \_ ->
-    C.withAsync right $ \b ->
-      C.wait b
+  withAsync left $ \_ ->
+    withAsync right $ \b ->
+      wait b
 
 -- | connect a committer and emitter action via spawning a queue, and wait for the Committer action to complete.
 withQL ::
-  (MonadConc m) =>
   Queue a ->
-  (Queue a -> m (Box m a a, m ())) ->
-  (Committer m a -> m l) ->
-  (Emitter m a -> m r) ->
-  m l
+  (Queue a -> IO (Box IO a a, IO ())) ->
+  (Committer IO a -> IO l) ->
+  (Emitter IO a -> IO r) ->
+  IO l
 withQL q spawner cio eio =
-  C.bracket
+  bracket
     (spawner q)
     snd
     ( \(box, seal) ->
         concurrentlyLeft
-          (cio (committer box) `C.finally` seal)
-          (eio (emitter box) `C.finally` seal)
+          (cio (committer box) `finally` seal)
+          (eio (emitter box) `finally` seal)
     )
 
 -- | connect a committer and emitter action via spawning a queue, and wait for the Emitter action to complete.
 withQR ::
-  (MonadConc m) =>
   Queue a ->
-  (Queue a -> m (Box m a a, m ())) ->
-  (Committer m a -> m l) ->
-  (Emitter m a -> m r) ->
-  m r
+  (Queue a -> IO (Box IO a a, IO ())) ->
+  (Committer IO a -> IO l) ->
+  (Emitter IO a -> IO r) ->
+  IO r
 withQR q spawner cio eio =
-  C.bracket
+  bracket
     (spawner q)
     snd
     ( \(box, seal) ->
         concurrentlyRight
-          (cio (committer box) `C.finally` seal)
-          (eio (emitter box) `C.finally` seal)
+          (cio (committer box) `finally` seal)
+          (eio (emitter box) `finally` seal)
     )
 
 -- | connect a committer and emitter action via spawning a queue, and wait for both to complete.
 withQ ::
-  (MonadConc m) =>
   Queue a ->
-  (Queue a -> m (Box m a a, m ())) ->
-  (Committer m a -> m l) ->
-  (Emitter m a -> m r) ->
-  m (l, r)
+  (Queue a -> IO (Box IO a a, IO ())) ->
+  (Committer IO a -> IO l) ->
+  (Emitter IO a -> IO r) ->
+  IO (l, r)
 withQ q spawner cio eio =
-  C.bracket
+  bracket
     (spawner q)
     snd
     ( \(box, seal) ->
         concurrently
-          (cio (committer box) `C.finally` seal)
-          (eio (emitter box) `C.finally` seal)
+          (cio (committer box) `finally` seal)
+          (eio (emitter box) `finally` seal)
     )
 
 -- | Create an unbounded queue, returning the result from the Committer action.
 --
 -- >>> queueL New (\c -> glue c <$|> qList [1..3]) toListM
 queueL ::
-  (MonadConc m) =>
   Queue a ->
-  (Committer m a -> m l) ->
-  (Emitter m a -> m r) ->
-  m l
+  (Committer IO a -> IO l) ->
+  (Emitter IO a -> IO r) ->
+  IO l
 queueL q cm em = withQL q toBoxM cm em
 
 -- | Create an unbounded queue, returning the result from the Emitter action.
@@ -202,11 +195,10 @@ queueL q cm em = withQL q toBoxM cm em
 -- >>> queueR New (\c -> glue c <$|> qList [1..3]) toListM
 -- [3]
 queueR ::
-  (MonadConc m) =>
   Queue a ->
-  (Committer m a -> m l) ->
-  (Emitter m a -> m r) ->
-  m r
+  (Committer IO a -> IO l) ->
+  (Emitter IO a -> IO r) ->
+  IO r
 queueR q cm em = withQR q toBoxM cm em
 
 -- | Create an unbounded queue, returning both results.
@@ -214,43 +206,42 @@ queueR q cm em = withQR q toBoxM cm em
 -- >>> queue Unbounded (\c -> glue c <$|> qList [1..3]) toListM
 -- ((),[1,2,3])
 queue ::
-  (MonadConc m) =>
   Queue a ->
-  (Committer m a -> m l) ->
-  (Emitter m a -> m r) ->
-  m (l, r)
+  (Committer IO a -> IO l) ->
+  (Emitter IO a -> IO r) ->
+  IO (l, r)
 queue q cm em = withQ q toBoxM cm em
 
 -- | lift a box from STM
-liftB :: (MonadConc m) => Box (STM m) a b -> Box m a b
+liftB :: Box STM a b -> Box IO a b
 liftB (Box c e) = Box (foist atomically c) (foist atomically e)
 
 -- | Turn a box action into a box continuation
-fromAction :: (MonadConc m) => (Box m a b -> m r) -> CoBox m b a
+fromAction :: (Box IO a b -> IO r) -> CoBox IO b a
 fromAction baction = Codensity $ fuseActions baction
 
 -- | Turn a box action into a box continuation
-fromActionWith :: (MonadConc m) => Queue a -> Queue b -> (Box m a b -> m r) -> CoBox m b a
+fromActionWith :: Queue a -> Queue b -> (Box IO a b -> IO r) -> CoBox IO b a
 fromActionWith qa qb baction = Codensity $ fuseActionsWith qa qb baction
 
 -- | Connect up two box actions via two Unbounded queues
-fuseActions :: (MonadConc m) => (Box m a b -> m r) -> (Box m b a -> m r') -> m r'
+fuseActions :: (Box IO a b -> IO r) -> (Box IO b a -> IO r') -> IO r'
 fuseActions abm bam = do
   (Box ca ea, _) <- toBoxM Unbounded
   (Box cb eb, _) <- toBoxM Unbounded
   concurrentlyRight (abm (Box ca eb)) (bam (Box cb ea))
 
 -- | Connect up two box actions via two queues
-fuseActionsWith :: (MonadConc m) => Queue a -> Queue b -> (Box m a b -> m r) -> (Box m b a -> m r') -> m r'
+fuseActionsWith :: Queue a -> Queue b -> (Box IO a b -> IO r) -> (Box IO b a -> IO r') -> IO r'
 fuseActionsWith qa qb abm bam = do
   (Box ca ea, _) <- toBoxM qa
   (Box cb eb, _) <- toBoxM qb
   concurrentlyRight (abm (Box ca eb)) (bam (Box cb ea))
 
 -- | Hook a committer action to a queue, creating an emitter continuation.
-emitQ :: (MonadConc m) => Queue a -> (Committer m a -> m r) -> CoEmitter m a
+emitQ :: Queue a -> (Committer IO a -> IO r) -> CoEmitter IO a
 emitQ q cio = Codensity $ \eio -> queueR q cio eio
 
 -- | Hook a committer action to a queue, creating an emitter continuation.
-commitQ :: (MonadConc m) => Queue a -> (Emitter m a -> m r) -> CoCommitter m a
+commitQ :: Queue a -> (Emitter IO a -> IO r) -> CoCommitter IO a
 commitQ q eio = Codensity $ \cio -> queueL q cio eio
