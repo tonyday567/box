@@ -35,10 +35,6 @@ import Data.Bool
 import Data.Fixed (Fixed (MkFixed))
 import Data.Time
 import Prelude
-import Control.Monad.State.Lazy
-import Box.Connectors
-import Data.Bifunctor
-import Data.Bool
 
 -- $setup
 -- >>> :set -XOverloadedStrings
