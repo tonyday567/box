@@ -12,7 +12,7 @@ copyright:          Tony Day (c) 2017
 license:            BSD-3-Clause
 license-file:       LICENSE
 build-type:         Simple
-tested-with:        GHC ==8.8.4 || ==8.10.7 || ==9.2.1
+tested-with:        GHC ==8.8.4 || ==8.10.7 || ==9.2.2
 extra-source-files: ChangeLog.md
 
 source-repository head
@@ -41,9 +41,9 @@ library
     -Wunused-packages
 
   build-depends:
+    , async           ^>= 2.2
     , base            >=4.7   && <5
     , bytestring      ^>=0.11
-    , concurrency     ^>=1.11
     , containers      ^>=0.6
     , contravariant   ^>=1.5
     , dlist           ^>=1.0
@@ -52,6 +52,7 @@ library
     , mtl             ^>=2.2.2
     , profunctors     ^>=5.6
     , semigroupoids   ^>=5.3
+    , stm             ^>= 2.5.1
     , text            ^>=1.2
     , time            ^>=1.9
     , transformers    ^>=0.5

@@ -31,8 +31,7 @@ import Box.Committer
 import Box.Emitter
 import Box.Functor
 import Box.Queue
-import Control.Concurrent.Classy.Async as C
-import Control.Monad.Conc.Class (MonadConc)
+import Control.Concurrent.Async
 import Control.Monad.State.Lazy
 import Data.Foldable
 import qualified Data.Sequence as Seq
@@ -49,7 +48,7 @@ import Prelude
 --
 -- >>> pushList <$|> qList [1,2,3]
 -- [1,2,3]
-qList :: (MonadConc m) => [a] -> CoEmitter m a
+qList :: [a] -> CoEmitter IO a
 qList xs = emitQ Unbounded (\c -> fmap and (traverse (commit c) xs))
 
 -- | Directly supply a list to a committer action, via pop.
@@ -88,7 +87,7 @@ sink1 f e = do
 -- >>> glue <$> sink 2 print <*|> qList [1..3]
 -- 1
 -- 2
-sink :: (MonadConc m) => Int -> (a -> m ()) -> CoCommitter m a
+sink :: Int -> (a -> IO ()) -> CoCommitter IO a
 sink n f = commitQ Unbounded $ replicateM_ n . sink1 f
 
 -- singleton source
@@ -102,7 +101,7 @@ source1 a c = do
 -- >>> glue toStdout <$|> source 2 (pure "hi")
 -- hi
 -- hi
-source :: (MonadConc m) => Int -> m a -> CoEmitter m a
+source :: Int -> IO a -> CoEmitter IO a
 source n f = emitQ Unbounded $ replicateM_ n . source1 f
 
 -- | Glues an emitter to a committer, then resupplies the emitter.
@@ -121,11 +120,11 @@ forkEmit e c =
     pure a
 
 -- | Buffer a committer.
-bufferCommitter :: (MonadConc m) => Committer m a -> CoCommitter m a
+bufferCommitter :: Committer IO a -> CoCommitter IO a
 bufferCommitter c = Codensity $ \caction -> queueL Unbounded caction (glue c)
 
 -- | Buffer an emitter.
-bufferEmitter :: (MonadConc m) => Emitter m a -> CoEmitter m a
+bufferEmitter :: Emitter IO a -> CoEmitter IO a
 bufferEmitter e = Codensity $ \eaction -> queueR Unbounded (`glue` e) eaction
 
 -- | Concurrently run two emitters.
@@ -142,13 +141,12 @@ bufferEmitter e = Codensity $ \eaction -> queueR Unbounded (`glue` e) eaction
 -- > (c,l) <- refCommitter :: IO (Committer IO Int, IO [Int])
 -- > close $ glue c <$> (join $ concurrentE Single <$> qList [1..30] <*> qList [40..60])
 concurrentE ::
-  MonadConc f =>
   Queue a ->
-  Emitter f a ->
-  Emitter f a ->
-  CoEmitter f a
+  Emitter IO a ->
+  Emitter IO a ->
+  CoEmitter IO a
 concurrentE q e e' =
-  Codensity $ \eaction -> snd . fst <$> C.concurrently (queue q (`glue` e) eaction) (queue q (`glue` e') eaction)
+  Codensity $ \eaction -> snd . fst <$> concurrently (queue q (`glue` e) eaction) (queue q (`glue` e') eaction)
 
 -- | Concurrently run two committers.
 --
@@ -163,24 +161,23 @@ concurrentE q e e' =
 -- slow: 1
 -- slow: 2
 -- slow: 3
-concurrentC :: (MonadConc m) => Queue a -> Committer m a -> Committer m a -> CoCommitter m a
+concurrentC :: Queue a -> Committer IO a -> Committer IO a -> CoCommitter IO a
 concurrentC q c c' = mergeC <$> eitherC q c c'
 
 eitherC ::
-  (MonadConc m) =>
   Queue a ->
-  Committer m a ->
-  Committer m a ->
-  Codensity m (Either (Committer m a) (Committer m a))
+  Committer IO a ->
+  Committer IO a ->
+  Codensity IO (Either (Committer IO a) (Committer IO a))
 eitherC q cl cr =
   Codensity $
     \kk ->
       fst
-        <$> C.concurrently
+        <$> concurrently
           (queueL q (kk . Left) (glue cl))
           (queueL q (kk . Right) (glue cr))
 
-mergeC :: Either (Committer m a) (Committer m a) -> Committer m a
+mergeC :: Either (Committer IO a) (Committer IO a) -> Committer IO a
 mergeC ec =
   Committer $ \a ->
     case ec of
@@ -192,10 +189,10 @@ mergeC ec =
 -- >>> import Control.Monad.State.Lazy
 -- >>> toListM <$|> (takeQ 4 =<< qList [0..])
 -- [0,1,2,3]
-takeQ :: (MonadConc m) => Int -> Emitter m a -> CoEmitter m a
+takeQ :: Int -> Emitter IO a -> CoEmitter IO a
 takeQ n e = emitQ Unbounded $ \c -> glueES 0 c (takeE n e)
 
-newE :: (MonadConc m) => Emitter m a -> CoEmitter m a
+newE :: Emitter IO a -> CoEmitter IO a
 newE e = emitQ New $ \c -> glue c e
 
 -- | queue a stateful emitter, supplying initial state
@@ -203,5 +200,5 @@ newE e = emitQ New $ \c -> glue c e
 -- >>> import Control.Monad.State.Lazy
 -- >>> toListM <$|> (evalEmitter 0 <$> takeE 4 =<< qList [0..])
 -- [0,1,2,3]
-evalEmitter :: (MonadConc m) => s -> Emitter (StateT s m) a -> CoEmitter m a
+evalEmitter :: s -> Emitter (StateT s IO) a -> CoEmitter IO a
 evalEmitter s e = emitQ Unbounded $ \c -> glueES s c e

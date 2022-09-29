@@ -34,9 +34,8 @@ import Box.Codensity
 import Box.Committer
 import Box.Connectors
 import Box.Emitter
-import qualified Control.Concurrent.Classy.IORef as C
+import Data.IORef
 import Control.Exception
-import qualified Control.Monad.Conc.Class as C
 import Data.Bool
 import Data.Foldable
 import Data.Functor.Contravariant
@@ -47,7 +46,7 @@ import System.IO as IO
 import Prelude
 import Data.ByteString.Char8 as Char8
 import Data.String
-import Control.Concurrent.Classy.Async
+import Control.Concurrent.Async
 import Data.Function
 import Control.Monad.State.Lazy
 
@@ -174,13 +173,13 @@ fileCBS fp m b = fileC fp b m (handleC Char8.hPutStrLn)
 -- >>> glue c1 <$|> qList [1..3]
 -- >>> l1
 -- [1,2,3]
-refCommitter :: (C.MonadConc m) => m (Committer m a, m [a])
+refCommitter :: IO (Committer IO a, IO [a])
 refCommitter = do
-  ref <- C.newIORef Seq.empty
+  ref <- newIORef Seq.empty
   let c = Committer $ \a -> do
-        C.modifyIORef ref (Seq.:|> a)
+        modifyIORef ref (Seq.:|> a)
         pure True
-  let res = toList <$> C.readIORef ref
+  let res = toList <$> readIORef ref
   pure (c, res)
 
 -- | Emit from a list IORef
@@ -188,15 +187,15 @@ refCommitter = do
 -- >>> e <- refEmitter [1..3]
 -- >>> toListM e
 -- [1,2,3]
-refEmitter :: (C.MonadConc m) => [a] -> m (Emitter m a)
+refEmitter :: [a] -> IO (Emitter IO a)
 refEmitter xs = do
-  ref <- C.newIORef xs
+  ref <- newIORef xs
   let e = Emitter $ do
-        as <- C.readIORef ref
+        as <- readIORef ref
         case as of
           [] -> pure Nothing
           (x : xs') -> do
-            C.writeIORef ref xs'
+            writeIORef ref xs'
             pure $ Just x
   pure e
 
@@ -223,7 +222,7 @@ pauser b e = Emitter $ fix $ \rec -> do
     Just True -> rec
 
 -- | Create an emitter that indicates when another emitter has changed.
-changer :: (Eq a, C.MonadConc m) => a -> Emitter m a -> CoEmitter m Bool
+changer :: (Eq a) => a -> Emitter IO a -> CoEmitter IO Bool
 changer a0 e = evalEmitter a0 $ Emitter $ do
   r <- lift $ emit e
   case r of
@@ -245,7 +244,7 @@ changer a0 e = evalEmitter a0 $ Emitter $ do
 quit :: Emitter IO Bool -> IO a -> IO (Either Bool a)
 quit flag io = race (checkE flag) io
 
-checkE :: C.MonadConc m => Emitter m Bool -> m Bool
+checkE :: Emitter IO Bool -> IO Bool
 checkE e = fix $ \rec -> do
   a <- emit e
   -- atomically $ check (a == Just False)

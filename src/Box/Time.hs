@@ -24,8 +24,7 @@ where
 
 import Box.Emitter
 import Control.Applicative
-import Control.Monad.Conc.Class as C
-import Control.Monad.IO.Class
+import Control.Concurrent
 import Data.Fixed (Fixed (MkFixed))
 import Data.Time
 import Prelude
@@ -40,8 +39,8 @@ import Data.Bool
 -- >>> import Prelude
 
 -- | Sleep for x seconds.
-sleep :: (MonadConc m) => Double -> m ()
-sleep x = C.threadDelay (floor $ x * 1e6)
+sleep :: Double -> IO ()
+sleep x = threadDelay (floor $ x * 1e6)
 
 -- | convenience conversion to Double
 fromNominalDiffTime :: NominalDiffTime -> Double
@@ -60,9 +59,9 @@ toNominalDiffTime x =
    in diffUTCTime t1 t0
 
 -- | Add the current time
-stampNow :: (MonadConc m, MonadIO m) => a -> m (LocalTime, a)
+stampNow :: a -> IO (LocalTime, a)
 stampNow a = do
-  t <- liftIO getCurrentTime
+  t <- getCurrentTime
   pure (utcToLocalTime utc t, a)
 
 -- | Add the current time stamp.
@@ -72,9 +71,8 @@ stampNow a = do
 -- [(2022-08-30 01:55:16.517127,1),(2022-08-30 01:55:16.517132,2),(2022-08-30 01:55:16.517135,3)]
 -- @
 stampE ::
-  (MonadConc m, MonadIO m) =>
-  Emitter m a ->
-  Emitter m (LocalTime, a)
+  Emitter IO a ->
+  Emitter IO (LocalTime, a)
 stampE = witherE (fmap Just . stampNow)
 
 type Gap = Double
@@ -83,7 +81,7 @@ type Gap = Double
 --
 -- > toListM <$|> (gaps =<< (fromGapsNow =<< (qList (zip (0:repeat 1) [1..4]))))
 -- [(0.0,1),(1.0,2),(1.0,3),(1.0,4)]
-gaps :: (C.MonadConc m) => Emitter m (LocalTime, a) -> CoEmitter m (Gap, a)
+gaps :: Emitter IO (LocalTime, a) -> CoEmitter IO (Gap, a)
 gaps e = evalEmitter Nothing $ Emitter $ do
   r <- lift $ emit e
   case r of
@@ -96,7 +94,7 @@ gaps e = evalEmitter Nothing $ Emitter $ do
 
 -- | Convert gaps in seconds to stamps starting from an initial supplied 'LocalTime'
 --
-fromGaps :: (C.MonadConc m) => LocalTime -> Emitter m (Gap, a) -> CoEmitter m (LocalTime, a)
+fromGaps :: LocalTime -> Emitter IO (Gap, a) -> CoEmitter IO (LocalTime, a)
 fromGaps t0 e = evalEmitter t0 $ Emitter $ do
   r <- lift $ emit e
   case r of
@@ -111,16 +109,15 @@ fromGaps t0 e = evalEmitter t0 $ Emitter $ do
 --
 -- > toListM <$|> (fromGapsNow =<< (qList (zip (0:repeat 1) [1..4])))
 -- [(2022-08-30 22:57:33.835228,1),(2022-08-30 22:57:34.835228,2),(2022-08-30 22:57:35.835228,3),(2022-08-30 22:57:36.835228,4)]
-fromGapsNow :: (MonadIO m, MonadConc m) => Emitter m (Gap, a) -> CoEmitter m (LocalTime, a)
+fromGapsNow :: Emitter IO (Gap, a) -> CoEmitter IO (LocalTime, a)
 fromGapsNow e = do
   t0 <- liftIO getCurrentTime
   fromGaps (utcToLocalTime utc t0) e
 
 -- | Convert a (Gap,a) emitter to an a emitter, with delays between emits of the gap.
 gapEffect ::
-  C.MonadConc m =>
-  Emitter m (Gap, a) ->
-  Emitter m a
+  Emitter IO (Gap, a) ->
+  Emitter IO a
 gapEffect as =
   Emitter $ do
     a <- emit as
@@ -129,10 +126,9 @@ gapEffect as =
       _ -> pure Nothing
 
 speedEffect ::
-  C.MonadConc m =>
-  Emitter m Gap ->
-  Emitter m (Gap, a) ->
-  Emitter m a
+  Emitter IO Gap ->
+  Emitter IO (Gap, a) ->
+  Emitter IO a
 speedEffect speeds as =
   Emitter $ do
     s <- emit speeds
@@ -145,10 +141,9 @@ speedEffect speeds as =
 --
 -- effect is similar to a fast-forward of the first n emits
 gapSkipEffect ::
-  C.MonadConc m =>
-  Emitter m Int ->
-  Emitter m Gap ->
-  CoEmitter m Gap
+  Emitter IO Int ->
+  Emitter IO Gap ->
+  CoEmitter IO Gap
 gapSkipEffect n e = evalEmitter 0 $ Emitter $ do
     n' <- lift $ emit n
     e' <- lift $ emit e
@@ -164,10 +159,9 @@ gapSkipEffect n e = evalEmitter 0 $ Emitter $ do
 --
 -- effect is similar to a fast-forward of the first n emits
 speedSkipEffect ::
-  C.MonadConc m =>
-  Emitter m (Int, Gap) ->
-  Emitter m (Gap, a) ->
-  CoEmitter m a
+  Emitter IO (Int, Gap) ->
+  Emitter IO (Gap, a) ->
+  CoEmitter IO a
 speedSkipEffect p e = evalEmitter 0 $ Emitter $ do
     p' <- lift $ emit p
     e' <- lift $ emit e
@@ -177,10 +171,9 @@ speedSkipEffect p e = evalEmitter 0 $ Emitter $ do
       (_, Nothing) -> pure Nothing
       (Nothing, _) -> pure Nothing
       (Just (n,s), Just (g,a)) ->
-        sleep (bool (g/s) 0 (n >= count)) >> pure (Just a)
+        lift $ sleep (bool (g/s) 0 (n >= count)) >> pure (Just a)
 
-
-skip :: (C.MonadConc m) => Int -> Emitter m (Gap, a) -> CoEmitter m (Gap, a)
+skip :: Int -> Emitter IO (Gap, a) -> CoEmitter IO (Gap, a)
 skip sk e = evalEmitter (sk+1) $ Emitter $ do
   skip' <- get
   e' <- lift $ emit e
@@ -197,5 +190,5 @@ skip sk e = evalEmitter (sk+1) $ Emitter $ do
 --
 -- > toListM . stampE <$|> (replay 0.1 1 =<< (fromGapsNow =<< (qList (zip (0:repeat 1) [1..4]))))
 -- [(2022-08-31 02:29:39.643831,1),(2022-08-31 02:29:39.643841,2),(2022-08-31 02:29:39.746998,3),(2022-08-31 02:29:39.849615,4)]
-replay :: (C.MonadConc m) => Double -> Int -> Emitter m (LocalTime, a) -> CoEmitter m a
+replay :: Double -> Int -> Emitter IO (LocalTime, a) -> CoEmitter IO a
 replay speed sk e = gapEffect . fmap (first (speed*)) <$> (skip sk =<< gaps e)
