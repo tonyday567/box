@@ -84,7 +84,7 @@ sink1 f e = do
 
 -- | Create a finite Committer.
 --
--- >>> glue <$> sink 2 print <*|> qList [1..3]
+-- > glue <$> sink 2 print <*|> qList [1..3]
 -- 1
 -- 2
 sink :: Int -> (a -> IO ()) -> CoCommitter IO a

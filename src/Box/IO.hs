@@ -57,7 +57,6 @@ import Control.Monad.State.Lazy
 -- >>> import Data.Bool
 -- >>> import Data.Text (Text, pack)
 -- >>> import Data.Functor.Contravariant
--- attempting to use module ‘main:Box’ (/Users/tonyday/haskell/box/src/Box.hs) which is not loaded
 
 -- * console
 
