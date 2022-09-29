@@ -21,7 +21,8 @@ module Box.Connectors
     concurrentE,
     concurrentC,
     takeQ,
-  )
+    evalEmitter,
+  newE)
 where
 
 import Box.Box
@@ -193,3 +194,14 @@ mergeC ec =
 -- [0,1,2,3]
 takeQ :: (MonadConc m) => Int -> Emitter m a -> CoEmitter m a
 takeQ n e = emitQ Unbounded $ \c -> glueES 0 c (takeE n e)
+
+newE :: (MonadConc m) => Emitter m a -> CoEmitter m a
+newE e = emitQ New $ \c -> glue c e
+
+-- | queue a stateful emitter, supplying initial state
+--
+-- >>> import Control.Monad.State.Lazy
+-- >>> toListM <$|> (evalEmitter 0 <$> takeE 4 =<< qList [0..])
+-- [0,1,2,3]
+evalEmitter :: (MonadConc m) => s -> Emitter (StateT s m) a -> CoEmitter m a
+evalEmitter s e = emitQ Unbounded $ \c -> glueES s c e

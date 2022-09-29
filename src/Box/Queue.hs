@@ -18,7 +18,9 @@ module Box.Queue
     fromAction,
     emitQ,
     commitQ,
-  )
+  fromActionWith,
+  toBoxM,
+  toBoxSTM)
 where
 
 import Box.Box
@@ -227,11 +229,22 @@ liftB (Box c e) = Box (foist atomically c) (foist atomically e)
 fromAction :: (MonadConc m) => (Box m a b -> m r) -> CoBox m b a
 fromAction baction = Codensity $ fuseActions baction
 
--- | Connect up two box actions via two queues
+-- | Turn a box action into a box continuation
+fromActionWith :: (MonadConc m) => Queue a -> Queue b -> (Box m a b -> m r) -> CoBox m b a
+fromActionWith qa qb baction = Codensity $ fuseActionsWith qa qb baction
+
+-- | Connect up two box actions via two Unbounded queues
 fuseActions :: (MonadConc m) => (Box m a b -> m r) -> (Box m b a -> m r') -> m r'
 fuseActions abm bam = do
   (Box ca ea, _) <- toBoxM Unbounded
   (Box cb eb, _) <- toBoxM Unbounded
+  concurrentlyRight (abm (Box ca eb)) (bam (Box cb ea))
+
+-- | Connect up two box actions via two queues
+fuseActionsWith :: (MonadConc m) => Queue a -> Queue b -> (Box m a b -> m r) -> (Box m b a -> m r') -> m r'
+fuseActionsWith qa qb abm bam = do
+  (Box ca ea, _) <- toBoxM qa
+  (Box cb eb, _) <- toBoxM qb
   concurrentlyRight (abm (Box ca eb)) (bam (Box cb ea))
 
 -- | Hook a committer action to a queue, creating an emitter continuation.

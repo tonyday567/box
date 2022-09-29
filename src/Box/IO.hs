@@ -16,15 +16,19 @@ module Box.IO
     toStdoutN,
     readStdin,
     showStdout,
-    handleE,
-    handleC,
     refCommitter,
     refEmitter,
+    handleE,
+    handleC,
     fileE,
-    fileWriteC,
-    fileAppendC,
-  )
-where
+    fileC,
+    fileEText,
+    fileEBS,
+    fileCText,
+    fileCBS,
+    logConsoleC,
+    logConsoleE,
+    pauser, changer, quit, restart) where
 
 import Box.Codensity
 import Box.Committer
@@ -37,10 +41,15 @@ import Data.Bool
 import Data.Foldable
 import Data.Functor.Contravariant
 import qualified Data.Sequence as Seq
-import Data.Text as Text
+import Data.Text as Text hiding (null)
 import Data.Text.IO as Text
 import System.IO as IO
 import Prelude
+import Data.ByteString.Char8 as Char8
+import Data.String
+import Control.Concurrent.Classy.Async
+import Data.Function
+import Control.Monad.State.Lazy
 
 -- $setup
 -- >>> :set -XOverloadedStrings
@@ -109,30 +118,55 @@ showStdout :: Show a => Committer IO a
 showStdout = contramap (Text.pack . show) toStdout
 
 -- | Emits lines of Text from a handle.
-handleE :: Handle -> Emitter IO Text
-handleE h = Emitter $ do
-  l :: (Either IOException Text) <- try (Text.hGetLine h)
+-- handleEText = handleE Text.hGetLine
+
+-- handleEBS = handleE Char8.hGetLine
+
+-- | Emits lines of Text from a handle.
+handleE :: (IsString a, Eq a) => (Handle -> IO a) -> Handle -> Emitter IO a
+handleE action h = Emitter $ do
+  l :: (Either IOException a) <- try (action h)
   pure $ case l of
     Left _ -> Nothing
-    Right a -> bool (Just a) Nothing (a == "")
+    Right a -> bool (Just a) Nothing (a=="")
 
 -- | Commit lines of Text to a handle.
-handleC :: Handle -> Committer IO Text
-handleC h = Committer $ \a -> do
-  Text.hPutStrLn h a
+handleC :: (Handle -> a -> IO ()) -> Handle -> Committer IO a
+handleC action h = Committer $ \a -> do
+  action h a
   pure True
 
+-- | Commit lines of Text to a handle.
+-- handleCBS = handleC Char8.hPutStrLn
+
+-- | Emits lines of Text from a handle.
+-- handleCText = handleC Text.hPutStrLn
+
 -- | Emit lines of Text from a file.
-fileE :: FilePath -> CoEmitter IO Text
-fileE fp = Codensity $ \eio -> withFile fp ReadMode (eio . handleE)
+fileE :: FilePath -> BufferMode -> IOMode -> (Handle -> Emitter IO a) -> CoEmitter IO a
+fileE fp b m action = Codensity $ \eio -> withFile fp m
+  (\h -> do
+      hSetBuffering h b
+      eio (action h))
+
+fileEText :: FilePath -> BufferMode -> CoEmitter IO Text
+fileEText fp b = fileE fp b ReadMode (handleE Text.hGetLine)
+
+fileEBS :: FilePath -> BufferMode -> CoEmitter IO ByteString
+fileEBS fp b = fileE fp b ReadMode (handleE Char8.hGetLine)
 
 -- | Commit lines of Text to a file.
-fileWriteC :: FilePath -> CoCommitter IO Text
-fileWriteC fp = Codensity $ \cio -> withFile fp WriteMode (cio . handleC)
+fileC :: FilePath -> IOMode -> BufferMode -> (Handle -> Committer IO a) -> CoCommitter IO a
+fileC fp m b action = Codensity $ \cio -> withFile fp m
+  (\h -> do
+      hSetBuffering h b
+      cio (action h))
 
--- | Commit lines of Text, appending to a file.
-fileAppendC :: FilePath -> CoCommitter IO Text
-fileAppendC fp = Codensity $ \cio -> withFile fp AppendMode (cio . handleC)
+fileCText :: FilePath -> BufferMode -> IOMode -> CoCommitter IO Text
+fileCText fp m b = fileC fp b m (handleC Text.hPutStrLn)
+
+fileCBS :: FilePath -> BufferMode -> IOMode -> CoCommitter IO ByteString
+fileCBS fp m b = fileC fp b m (handleC Char8.hPutStrLn)
 
 -- | Commit to an IORef
 --
@@ -165,3 +199,67 @@ refEmitter xs = do
             C.writeIORef ref xs'
             pure $ Just x
   pure e
+
+-- | simple console logger for rough testing
+logConsoleE :: Show a => String -> Emitter IO a -> Emitter IO a
+logConsoleE label e = Emitter $ do
+  a <- emit e
+  Prelude.putStrLn (label <> show a)
+  pure a
+
+-- | simple console logger for rough testing
+logConsoleC :: Show a => String -> Committer IO a -> Committer IO a
+logConsoleC label c = Committer $ \a -> do
+  Prelude.putStrLn (label <> show a)
+  commit c a
+
+-- | Pause an emitter based on a Bool emitter
+pauser :: Emitter IO Bool -> Emitter IO a -> Emitter IO a
+pauser b e = Emitter $ fix $ \rec -> do
+  b' <- emit b
+  case b' of
+    Nothing -> pure Nothing
+    Just False -> emit e
+    Just True -> rec
+
+-- | Create an emitter that indicates when another emitter has changed.
+changer :: (Eq a, C.MonadConc m) => a -> Emitter m a -> CoEmitter m Bool
+changer a0 e = evalEmitter a0 $ Emitter $ do
+  r <- lift $ emit e
+  case r of
+    Nothing -> pure Nothing
+    Just r' -> do
+      r'' <- get
+      put r'
+      pure (Just (r'==r''))
+
+-- | quit a process based on a Bool emitter
+--
+-- > quit <$> speedEffect (pure 2) <$> (resetGap 5) <*|> pure io
+-- 0
+-- 1
+-- 2
+-- 3
+-- 4
+-- Left True
+quit :: Emitter IO Bool -> IO a -> IO (Either Bool a)
+quit flag io = race (checkE flag) io
+
+checkE :: C.MonadConc m => Emitter m Bool -> m Bool
+checkE e = fix $ \rec -> do
+  a <- emit e
+  -- atomically $ check (a == Just False)
+  case a of
+    Nothing -> pure False
+    Just True -> pure True
+    Just False -> rec
+
+-- | restart a process if flagged by a Bool emitter
+--
+restart :: Emitter IO Bool -> IO a -> IO (Either Bool a)
+restart flag io = fix $ \rec -> do
+  res <- quit flag io
+  case res of
+    Left True -> rec
+    Left False -> pure (Left False)
+    Right r -> pure (Right r)
