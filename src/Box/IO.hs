@@ -112,7 +112,7 @@ toStdoutN n = sink n Text.putStrLn
 -- hippo
 -- 2
 -- 2
-readStdin :: Read a => Emitter IO a
+readStdin :: (Read a) => Emitter IO a
 readStdin = witherE (pure . either (const Nothing) Just) . readE $ fromStdin
 
 -- | Show to stdout
@@ -121,7 +121,7 @@ readStdin = witherE (pure . either (const Nothing) Just) . readE $ fromStdin
 -- 1
 -- 2
 -- 3
-showStdout :: Show a => Committer IO a
+showStdout :: (Show a) => Committer IO a
 showStdout = contramap (Text.pack . show) toStdout
 
 -- | Emits lines of Text from a handle.
@@ -135,7 +135,7 @@ handleE action h = Emitter $ do
   l :: (Either IOException a) <- try (action h)
   pure $ case l of
     Left _ -> Nothing
-    Right a -> bool (Just a) Nothing (a=="")
+    Right a -> bool (Just a) Nothing (a == "")
 
 -- | Commit lines of Text to a handle.
 handleC :: (Handle -> a -> IO ()) -> Handle -> Committer IO a
@@ -216,14 +216,14 @@ refEmitter xs = do
   pure e
 
 -- | simple console logger for rough testing
-logConsoleE :: Show a => String -> Emitter IO a -> Emitter IO a
+logConsoleE :: (Show a) => String -> Emitter IO a -> Emitter IO a
 logConsoleE label e = Emitter $ do
   a <- emit e
   Prelude.putStrLn (label <> show a)
   pure a
 
 -- | simple console logger for rough testing
-logConsoleC :: Show a => String -> Committer IO a -> Committer IO a
+logConsoleC :: (Show a) => String -> Committer IO a -> Committer IO a
 logConsoleC label c = Committer $ \a -> do
   Prelude.putStrLn (label <> show a)
   commit c a

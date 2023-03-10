@@ -1,6 +1,6 @@
 cabal-version:      2.4
 name:               box
-version:            0.9.0
+version:            0.9.1
 synopsis:           boxes
 description:        A profunctor effect
 category:           project
@@ -12,7 +12,8 @@ copyright:          Tony Day (c) 2017
 license:            BSD-3-Clause
 license-file:       LICENSE
 build-type:         Simple
-tested-with:        GHC ==8.8.4 || ==8.10.7 || ==9.2.2
+tested-with:
+  GHC ==8.6.5 || ==8.8.4 || ==8.10.7 || ==9.2.5 || ==9.4.4
 extra-source-files: ChangeLog.md
 
 source-repository head
@@ -37,8 +38,7 @@ library
   ghc-options:
     -Wall -Wcompat -Wincomplete-record-updates
     -Wincomplete-uni-patterns -Wredundant-constraints
-    -funbox-strict-fields -fwrite-ide-info -hiedir=.hie
-    -Wunused-packages
+    -funbox-strict-fields
 
   build-depends:
     , async           ^>= 2.2
@@ -49,12 +49,11 @@ library
     , dlist           ^>=1.0
     , exceptions      ^>=0.10
     , kan-extensions  ^>=5.2
-    , mtl             ^>=2.2.2
+    , mtl             >=2.2.2 && <2.4
     , profunctors     ^>=5.6
     , semigroupoids   ^>=5.3
     , stm             ^>= 2.5.1
     , text            >=1.2 && < 2.1
-    , time            ^>=1.9
-    , transformers    ^>=0.5
+    , time            >=1.9 && <1.13
 
   default-language:   Haskell2010

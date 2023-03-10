@@ -28,7 +28,7 @@ import Prelude
 instance (Semigroup a) => Semigroup (Codensity m a) where
   (<>) = liftA2 (<>)
 
-instance (Functor m, Semigroup a, Monoid a) => Monoid (Codensity m a) where
+instance (Functor m, Monoid a) => Monoid (Codensity m a) where
   mempty = pure mempty
 
   mappend = (<>)

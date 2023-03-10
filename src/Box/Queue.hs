@@ -181,7 +181,6 @@ withQ q spawner cio eio =
     )
 
 -- | Create an unbounded queue, returning the result from the Committer action.
---
 queueL ::
   Queue a ->
   (Committer IO a -> IO l) ->
@@ -190,7 +189,6 @@ queueL ::
 queueL q cm em = withQL q toBoxM cm em
 
 -- | Create an unbounded queue, returning the result from the Emitter action.
---
 queueR ::
   Queue a ->
   (Committer IO a -> IO l) ->

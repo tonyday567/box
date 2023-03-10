@@ -68,7 +68,7 @@ qListWith q xs = emitQ q (\c -> fmap and (traverse (commit c) xs))
 -- 1
 -- 2
 -- 3
-popList :: Monad m => [a] -> Committer m a -> m ()
+popList :: (Monad m) => [a] -> Committer m a -> m ()
 popList xs c = glueES (Seq.fromList xs) c pop
 
 -- | Push an Emitter into a list, via push.
@@ -89,9 +89,7 @@ pushListN n e = toList <$> flip execStateT Seq.empty (glueN n push (foist lift e
 sink1 :: (Monad m) => (a -> m ()) -> Emitter m a -> m ()
 sink1 f e = do
   a <- emit e
-  case a of
-    Nothing -> pure ()
-    Just a' -> f a'
+  forM_ a f
 
 -- FIXME: This doctest sometimes fails with the last value not being printed. Hypothesis: the pipe collapses before the console print effect happens.
 

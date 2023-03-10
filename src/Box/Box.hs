@@ -121,7 +121,7 @@ glueS s c e = flip evalStateT s $ glue c e
 -- >>> glueN 4 (witherC (\x -> bool (pure Nothing) (pure (Just x)) (even x)) showStdout) <$|> qList [0..9]
 -- 0
 -- 2
-glueN :: Monad m => Int -> Committer m a -> Emitter m a -> m ()
+glueN :: (Monad m) => Int -> Committer m a -> Emitter m a -> m ()
 glueN n c e = flip evalStateT 0 $ glue (foist lift c) (takeE n e)
 
 -- | Glue a Committer to an Emitter within a box.
@@ -146,7 +146,7 @@ instance (Applicative m) => Divap (Box m) where
   conpur a = Box conquer (pure a)
 
 -- | combines 'Decidable' and 'Alternative'
-class Profunctor p => DecAlt p where
+class (Profunctor p) => DecAlt p where
   choice :: (a -> Either b c) -> (Either d e -> f) -> p b d -> p c e -> p a f
   loss :: p Void b
 
@@ -175,7 +175,7 @@ seqBox :: (Monad m) => Box (StateT (Seq.Seq a) m) a a
 seqBox = Box push pop
 
 -- | cps composition of monadic boxes
-dotco :: Monad m => Codensity m (Box m a b) -> Codensity m (Box m b c) -> Codensity m (Box m a c)
+dotco :: (Monad m) => Codensity m (Box m a b) -> Codensity m (Box m b c) -> Codensity m (Box m a c)
 dotco b b' = lift $ do
   (Box c e) <- lowerCodensity b
   (Box c' e') <- lowerCodensity b'
