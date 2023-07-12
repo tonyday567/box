@@ -27,6 +27,7 @@ where
 
 import Box.Functor
 import Control.Applicative
+import Control.Monad
 import Control.Monad.Codensity
 import Control.Monad.State.Lazy
 import Data.Bool

@@ -36,8 +36,10 @@ import Box.Emitter
 import Box.Functor
 import Box.Queue
 import Control.Concurrent.Async
+import Control.Monad
 import Control.Monad.State.Lazy
 import Data.Foldable
+import Data.Functor
 import qualified Data.Sequence as Seq
 import Prelude
 

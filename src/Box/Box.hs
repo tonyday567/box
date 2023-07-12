@@ -37,6 +37,7 @@ import Control.Applicative
   )
 import Control.Monad.State.Lazy
 import Data.Bool
+import Data.Function
 import Data.Functor.Contravariant (Contravariant (contramap))
 import Data.Functor.Contravariant.Divisible
   ( Decidable (choose, lose),
@@ -46,7 +47,7 @@ import Data.Profunctor (Profunctor (dimap))
 import Data.Semigroupoid
 import qualified Data.Sequence as Seq
 import Data.Void (Void, absurd)
-import Prelude hiding (id, (.))
+import Prelude hiding (id, liftA2, (.))
 
 -- $setup
 -- >>> :set -XOverloadedStrings
