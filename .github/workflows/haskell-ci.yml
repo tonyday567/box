@@ -17,6 +17,7 @@ jobs:
       - uses: haskell-actions/run-ormolu@v11
   stack:
     runs-on: ubuntu-latest
+    stack-yaml: stack-nightly.yaml
     steps:
       - uses: actions/checkout@v3
       - uses: freckle/stack-action@v4
@@ -27,7 +28,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        ghc-version: ['9.6', '9.4', '9.2', '9.0', '8.10', '8.8', '8.6']
+        ghc-version: ['9.6', '9.4', '9.2', '9.0', '8.10']
         docspec: [false]
         experimental: [false]
 
