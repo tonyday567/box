@@ -1,6 +1,6 @@
 cabal-version:      2.4
 name:               box
-version:            0.9.1
+version:            0.9.2
 synopsis:           boxes
 description:        A profunctor effect
 category:           project
@@ -13,7 +13,7 @@ license:            BSD-3-Clause
 license-file:       LICENSE
 build-type:         Simple
 tested-with:
-  GHC ==8.6.5 || ==8.8.4 || ==8.10.7 || ==9.2.5 || ==9.4.4
+  GHC ==8.6.5 || ==8.8.4 || ==8.10.7 || ==9.2.8 || ==9.4.5 || ==9.6.2
 extra-source-files: ChangeLog.md
 
 source-repository head
@@ -42,8 +42,8 @@ library
 
   build-depends:
     , async           ^>= 2.2
-    , base            >=4.7   && <5
-    , bytestring      ^>=0.11
+    , base            >=4.7 && <5
+    , bytestring      >=0.11 && <0.13
     , containers      ^>=0.6
     , contravariant   ^>=1.5
     , dlist           ^>=1.0
@@ -51,7 +51,7 @@ library
     , kan-extensions  ^>=5.2
     , mtl             >=2.2.2 && <2.4
     , profunctors     ^>=5.6
-    , semigroupoids   ^>=5.3
+    , semigroupoids   >=5.3 && <6.1
     , stm             ^>= 2.5.1
     , text            >=1.2 && < 2.1
     , time            >=1.9 && <1.13
