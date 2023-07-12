@@ -1,14 +1,4 @@
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# OPTIONS_GHC -Wall #-}
-{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-{-# OPTIONS_GHC -fno-warn-type-defaults #-}
+{-# LANGUAGE ExplicitNamespaces #-}
 
 -- | `emit`
 module Box.Emitter
@@ -31,8 +21,8 @@ import Control.Monad
 import Control.Monad.Codensity
 import Control.Monad.State.Lazy
 import Data.Bool
-import qualified Data.DList as D
-import qualified Data.Sequence as Seq
+import Data.DList qualified as D
+import Data.Sequence qualified as Seq
 import Data.Text (Text, pack, unpack)
 import Prelude
 

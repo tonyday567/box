@@ -1,12 +1,4 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# OPTIONS_GHC -Wall #-}
-{-# OPTIONS_GHC -fno-warn-type-defaults #-}
 
 -- | IO effects
 module Box.IO
@@ -48,7 +40,7 @@ import Data.Foldable
 import Data.Function
 import Data.Functor.Contravariant
 import Data.IORef
-import qualified Data.Sequence as Seq
+import Data.Sequence qualified as Seq
 import Data.String
 import Data.Text as Text hiding (null)
 import Data.Text.IO as Text

@@ -1,13 +1,3 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE RebindableSyntax #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# OPTIONS_GHC -Wall #-}
-
 -- | `commit`
 module Box.Committer
   ( Committer (..),
@@ -23,7 +13,7 @@ import Box.Functor
 import Control.Monad.State.Lazy
 import Data.Functor.Contravariant
 import Data.Functor.Contravariant.Divisible
-import qualified Data.Sequence as Seq
+import Data.Sequence qualified as Seq
 import Data.Void
 import Prelude
 

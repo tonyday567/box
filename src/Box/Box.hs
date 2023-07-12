@@ -1,13 +1,3 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StrictData #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# OPTIONS_GHC -Wall #-}
-{-# OPTIONS_GHC -fno-warn-type-defaults #-}
-
 -- | A box is something that 'commit's and 'emit's
 module Box.Box
   ( Box (..),
@@ -45,7 +35,7 @@ import Data.Functor.Contravariant.Divisible
   )
 import Data.Profunctor (Profunctor (dimap))
 import Data.Semigroupoid
-import qualified Data.Sequence as Seq
+import Data.Sequence qualified as Seq
 import Data.Void (Void, absurd)
 import Prelude hiding (id, liftA2, (.))
 

@@ -1,12 +1,3 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE RebindableSyntax #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# OPTIONS_GHC -Wall #-}
-
 -- | Various ways to connect things up.
 module Box.Connectors
   ( qList,
@@ -40,7 +31,7 @@ import Control.Monad
 import Control.Monad.State.Lazy
 import Data.Foldable
 import Data.Functor
-import qualified Data.Sequence as Seq
+import Data.Sequence qualified as Seq
 import Prelude
 
 -- $setup
