@@ -17,11 +17,12 @@ jobs:
       - uses: haskell-actions/run-ormolu@v11
   stack:
     runs-on: ubuntu-latest
-    with:
-      stack-yaml: stack-nightly.yaml
     steps:
       - uses: actions/checkout@v3
       - uses: freckle/stack-action@v4
+        with:
+          stack-yaml: stack-nightly.yaml
+
   cabal:
     name: GHC ${{ matrix.ghc-version }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
