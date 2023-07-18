@@ -2,11 +2,112 @@
 
 [[https://hackage.haskell.org/package/box][file:https://img.shields.io/hackage/v/box.svg]] [[https://github.com/tonyday567/box/actions?query=workflow%3Ahaskell-ci][file:https://github.com/tonyday567/box/workflows/haskell-ci/badge.svg]]
 
-* A profunctor effect.
+A profunctor effect system.
 
 #+begin_quote
 What is all this stuff around me; this stream of experiences that I seem to be having all the time? Throughout history there have been people who say it is all illusion. ~ S Blackmore
 #+end_quote
+
+* Usage
+
+#+begin_src haskell
+:set prompt "> "
+:set -XOverloadedStrings
+import Box
+import Prelude
+#+end_src
+
+* Debugging echo example
+
+#+begin_src haskell :results output
+import Prelude
+import Box
+import Data.Function
+import Data.Bool
+stdC = Committer (\s -> putStrLn s >> pure True)
+emitQuit = Emitter (getLine & fmap (\x -> bool (Just x) Nothing (x =="quit")))
+glue stdC emitQuit
+
+#+end_src
+
+
+** basic narrative
+Effects often come in pairs, in two ways, duals that use the same real-world effect system such as standard IO, and effects that bracket a computation. You read from a source (a file, a socket, the screen or an IORef), compute stuff, then write to a target (a file, a socket, the screen or an IORef).
+
+Starting with the dual of reading and writing lines to standard IO:
+
+ #+begin_src haskell :results output :exports both
+:t getLine
+:t putStrLn
+#+end_src
+
+#+RESULTS:
+: getLine :: IO String
+: putStrLn :: String -> IO ()
+
+The design of Haskell tends to encourage coinduction for the (effect) functionality either side of a computation. In practice, this means that it is useful to define effects according to their destructors: how do I run an effect until it is exhausted.
+
+#+begin_src haskell
+newtype Emitter m a = Emitter
+  { emit :: m (Maybe a)
+  }
+#+end_src
+
+An emitter returns an 'a' on demand until it doesn't.
+
+ #+begin_src haskell
+newtype Committer m a = Committer
+  { commit :: a -> m Bool
+  }
+ #+end_src
+
+You give a committer an 'a', and it tells you whether the consumption of the 'a' was successful or not.
+
+A Box is just a product of an emitter and committer, so the standard IO box would be:
+
+#+begin_src haskell
+data Box m c e = Box
+  { committer :: Committer m c,
+    emitter :: Emitter m e
+  }
+#+end_src
+
+#+begin_src haskell :results output
+stdIO = Box (Committer (\s -> putStrLn s >> pure True)) (Emitter (Just <$> getLine))
+#+end_src
+
+#+RESULTS:
+#+begin_src haskell :results output
+echo = (\string -> bool (pure (Just ("echo: " <> string))) (pure Nothing) (string=="quit"))
+#+end_src
+
+#+RESULTS:
+
+ #+begin_src haskell :results output
+:t echo
+ #+end_src
+
+#+RESULTS:
+: echo
+:   :: (Applicative f, Semigroup a, Data.String.IsString a, Eq a) =>
+:      a -
+: f (Maybe a)
+
+ #+begin_src haskell :results output
+:t fuse echo stdIO
+ #+end_src
+
+#+RESULTS:
+: fuse echo stdIO :: IO ()
+
+
+
+
+
+
+One possible motivation for Haskell laziness
+
+
 
 This library grew out of using pipes. I wanted to try out the streaming library but it didn't yet have a concurrency system, so I ripped out the ends management and queues of pipes-concurrency. After a while I realised I was using this functionality ~instead~ of streams. There was often no stream, just pure computes with management of queues and effects at either end. I've used streamly without looking under the hood and the API, at least, seems somewhat familial.
 
@@ -25,6 +126,8 @@ It's a bit of a hodge-podge, but there's a good idea or two in here somewhere I'
 import Box
 import Prelude
 #+end_src
+
+#+RESULTS:
 
 #+begin_src haskell :results output
 glue toStdout <$|> qList ["a","b","c"]
@@ -144,7 +247,10 @@ This is how we can use a profunctor to glue together two categories ~ Milewski
 
 Non-fix version of glue:
 
-#+begin_src haskell
+#+begin_src haskell :results output
+:{
+import Control.Monad
+
 glue' :: (Monad m) => Committer m a -> Emitter m a -> m ()
 glue' c e = go
   where
@@ -152,7 +258,43 @@ glue' c e = go
       a <- emit e
       c' <- maybe (pure False) (commit c) a
       when c' go
+:}
 #+end_src
+
+#+RESULTS:
+: ghci| ghci| ghci| ghci| ghci| ghci| ghci| ghci| ghci| ghci|
+
+#+begin_src haskell :results output
+:{
+glue'' :: (Show a) => Committer IO a -> Emitter IO a -> IO ()
+glue'' c e = go
+  where
+    go = do
+      a <- emit e
+      putStrLn $ "emitted: " <> show a
+      c' <- maybe (pure False) (commit c) a
+      when c' (putStrLn "next go" >> go)
+:}
+#+end_src
+
+#+RESULTS:
+: ghci| ghci| ghci| ghci| ghci| ghci| ghci| ghci| ghci|
+
+
+#+RESULTS:
+#+begin_src haskell :results output
+echo = (\string -> bool (pure (Just ("echo: " <> string))) (pure Nothing) (string=="quit"))
+#+end_src
+
+#+RESULTS:
+: <interactive>:449:1: warning: [GHC-63397] [-Wname-shadowing]
+:     This binding for ‘echo’ shadows the existing binding
+:       defined at <interactive>:375:1
+
+#+begin_src haskell :results output
+glue'' (committer stdIO) (witherE echo (emitter stdIO))
+#+end_src
+
 
 ** finiteness
 
@@ -241,7 +383,8 @@ glue (contramap (pack . show) toStdout) <$|> qList [1..3]
 #+RESULTS:
 : fuse :: Monad m => (a -> m (Maybe b)) -> Box m b a -> m ()
 
-#+begin_src haskell
+#+begin_src haskell :results output
+import Data.Text (pack)
 import Data.Bool
 let box' = Box <$> pure toStdout <*> qList ((pack . show) <$> [1..3])
 fuse (\a -> bool (pure $ Just $ "echo: " <> a) (pure Nothing) (a=="2")) <$|> box'
@@ -250,6 +393,7 @@ fuse (\a -> bool (pure $ Just $ "echo: " <> a) (pure Nothing) (a=="2")) <$|> box
 #+RESULTS:
 : echo: 1
 : echo: 3
+
 
 A future direction of the library may be to add this in to a box.
 
@@ -509,6 +653,10 @@ nucleate ::
   f (g ())
 nucleate n c e = emit e & n & fmap (commit c)
 #+end_src
+** Programming with Monoidal Profunctors and Semarrows
+
+This paper may be relevant and contain abstraction that could be usefully backported:
+    [[https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4496714][Programming with Monoidal Profunctors and Semiarrows by Alexandre Garcia de O...]]
 * bugs
 
 This compiles but is broken:

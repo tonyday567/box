@@ -69,6 +69,7 @@ stampE ::
   Emitter IO (LocalTime, a)
 stampE = witherE (fmap Just . stampNow)
 
+-- | Usually represents seconds.
 type Gap = Double
 
 -- | Convert stamped emitter to gap between emits in seconds
@@ -118,6 +119,7 @@ gapEffect as =
       (Just (s, a')) -> sleep s >> pure (Just a')
       _ -> pure Nothing
 
+-- | Using the Gap emitter, adjust the Gap for a (Gap, a) emitter
 speedEffect ::
   Emitter IO Gap ->
   Emitter IO (Gap, a) ->
@@ -166,6 +168,7 @@ speedSkipEffect p e = evalEmitter 0 $ Emitter $ do
     (Just (n, s), Just (g, a)) ->
       lift $ sleep (bool (g / s) 0 (n >= count)) >> pure (Just a)
 
+-- | Ignore the first n gaps and immediately emit them.
 skip :: Int -> Emitter IO (Gap, a) -> CoEmitter IO (Gap, a)
 skip sk e = evalEmitter (sk + 1) $ Emitter $ do
   skip' <- get

@@ -135,13 +135,7 @@ handleC action h = Committer $ \a -> do
   action h a
   pure True
 
--- | Commit lines of Text to a handle.
--- handleCBS = handleC Char8.hPutStrLn
-
--- | Emits lines of Text from a handle.
--- handleCText = handleC Text.hPutStrLn
-
--- | Emit lines of Text from a file.
+-- | Emit from a file.
 fileE :: FilePath -> BufferMode -> IOMode -> (Handle -> Emitter IO a) -> CoEmitter IO a
 fileE fp b m action = Codensity $ \eio ->
   withFile
@@ -152,13 +146,15 @@ fileE fp b m action = Codensity $ \eio ->
         eio (action h)
     )
 
+-- | Emit lines of Text from a file.
 fileEText :: FilePath -> BufferMode -> CoEmitter IO Text
 fileEText fp b = fileE fp b ReadMode (handleE Text.hGetLine)
 
+-- | Emit lines of ByteString from a file.
 fileEBS :: FilePath -> BufferMode -> CoEmitter IO ByteString
 fileEBS fp b = fileE fp b ReadMode (handleE Char8.hGetLine)
 
--- | Commit lines of Text to a file.
+-- | Commit to a file.
 fileC :: FilePath -> IOMode -> BufferMode -> (Handle -> Committer IO a) -> CoCommitter IO a
 fileC fp m b action = Codensity $ \cio ->
   withFile
@@ -169,9 +165,12 @@ fileC fp m b action = Codensity $ \cio ->
         cio (action h)
     )
 
+-- | Commit Text to a file, as a line.
 fileCText :: FilePath -> BufferMode -> IOMode -> CoCommitter IO Text
 fileCText fp m b = fileC fp b m (handleC Text.hPutStrLn)
 
+
+-- | Commit ByteString to a file, as a line.
 fileCBS :: FilePath -> BufferMode -> IOMode -> CoCommitter IO ByteString
 fileCBS fp m b = fileC fp b m (handleC Char8.hPutStrLn)
 

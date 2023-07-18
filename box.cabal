@@ -1,8 +1,8 @@
 cabal-version:      2.4
 name:               box
 version:            0.9.2
-synopsis:           boxes
-description:        A profunctor effect
+synopsis:           A profunctor effect system.
+description:        This might be a profunctor effect system, but unlike all the others. See the project readme.org for usage and discussion: https://github.com/tonyday567/box#readme.org
 category:           project
 homepage:           https://github.com/tonyday567/box#readme
 bug-reports:        https://github.com/tonyday567/box/issues
@@ -13,7 +13,7 @@ license:            BSD-3-Clause
 license-file:       LICENSE
 build-type:         Simple
 tested-with:
-  GHC ==8.6.5 || ==8.8.4 || ==8.10.7 || ==9.2.8 || ==9.4.5 || ==9.6.2
+  GHC ==8.10.7 || ==9.2.8 || ==9.4.5 || ==9.6.2
 extra-source-files: ChangeLog.md
 
 source-repository head
