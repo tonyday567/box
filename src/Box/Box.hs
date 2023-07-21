@@ -93,10 +93,13 @@ data Closure = CommitterClosed | EmitterClosed deriving (Eq, Show, Ord)
 glue' :: (Monad m) => Committer m a -> Emitter m a -> m Closure
 glue' c e =
   fix $ \rec ->
-    emit e >>=
-    maybe (pure EmitterClosed)
-      (\a -> commit c a >>=
-            bool (pure CommitterClosed) rec)
+    emit e
+      >>= maybe
+        (pure EmitterClosed)
+        ( \a ->
+            commit c a
+              >>= bool (pure CommitterClosed) rec
+        )
 
 -- | Connect a Stateful emitter to a (non-stateful) committer of the same type, supplying initial state.
 --

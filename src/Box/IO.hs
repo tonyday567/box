@@ -169,7 +169,6 @@ fileC fp m b action = Codensity $ \cio ->
 fileCText :: FilePath -> BufferMode -> IOMode -> CoCommitter IO Text
 fileCText fp m b = fileC fp b m (handleC Text.hPutStrLn)
 
-
 -- | Commit ByteString to a file, as a line.
 fileCBS :: FilePath -> BufferMode -> IOMode -> CoCommitter IO ByteString
 fileCBS fp m b = fileC fp b m (handleC Char8.hPutStrLn)

@@ -147,7 +147,6 @@ filterE f e = Emitter go
             Nothing -> go
             Just fa' -> pure (Just fa')
 
-
 -- | Read parse 'Emitter', returning the original text on error
 --
 -- >>> process (toListM . readE) (qList ["1","2","3","four"]) :: IO [Either Text Int]
