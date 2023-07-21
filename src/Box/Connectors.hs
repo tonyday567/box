@@ -1,12 +1,3 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE RebindableSyntax #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# OPTIONS_GHC -Wall #-}
-
 -- | Various ways to connect things up.
 module Box.Connectors
   ( qList,
@@ -36,9 +27,11 @@ import Box.Emitter
 import Box.Functor
 import Box.Queue
 import Control.Concurrent.Async
+import Control.Monad
 import Control.Monad.State.Lazy
 import Data.Foldable
-import qualified Data.Sequence as Seq
+import Data.Functor
+import Data.Sequence qualified as Seq
 import Prelude
 
 -- $setup
@@ -48,7 +41,7 @@ import Prelude
 -- >>> import Data.Bool
 -- >>> import Control.Monad
 
--- | Queue a list Unbounded.
+-- | Queue a list 'Unbounded'.
 --
 -- >>> pushList <$|> qList [1,2,3]
 -- [1,2,3]
@@ -91,11 +84,9 @@ sink1 f e = do
   a <- emit e
   forM_ a f
 
--- FIXME: This doctest sometimes fails with the last value not being printed. Hypothesis: the pipe collapses before the console print effect happens.
-
 -- | Create a finite Committer Unbounded Queue.
 --
--- > glue <$> sink 2 print <*|> qList [1..3]
+-- >>> glue <$> sink 2 print <*|> qList [1..3]
 -- 1
 -- 2
 sink :: Int -> (a -> IO ()) -> CoCommitter IO a

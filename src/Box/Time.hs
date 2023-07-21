@@ -1,12 +1,3 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE RebindableSyntax #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# OPTIONS_GHC -fno-warn-name-shadowing #-}
-{-# OPTIONS_GHC -fno-warn-orphans #-}
-{-# OPTIONS_GHC -fno-warn-type-defaults #-}
-
 -- | Timing effects.
 module Box.Time
   ( sleep,
@@ -78,12 +69,13 @@ stampE ::
   Emitter IO (LocalTime, a)
 stampE = witherE (fmap Just . stampNow)
 
+-- | Usually represents seconds.
 type Gap = Double
 
 -- | Convert stamped emitter to gap between emits in seconds
 --
 -- > toListM <$|> (gaps =<< (fromGapsNow =<< (qList (zip (0:repeat 1) [1..4]))))
--- [(0.0,1),(1.0,2),(1.0,3),(1.0,4)]
+-- > [(0.0,1),(1.0,2),(1.0,3),(1.0,4)]
 gaps :: Emitter IO (LocalTime, a) -> CoEmitter IO (Gap, a)
 gaps e = evalEmitter Nothing $ Emitter $ do
   r <- lift $ emit e
@@ -110,7 +102,7 @@ fromGaps t0 e = evalEmitter t0 $ Emitter $ do
 -- | Convert gaps in seconds to stamps starting with current time
 --
 -- > toListM <$|> (fromGapsNow =<< (qList (zip (0:repeat 1) [1..4])))
--- [(2022-08-30 22:57:33.835228,1),(2022-08-30 22:57:34.835228,2),(2022-08-30 22:57:35.835228,3),(2022-08-30 22:57:36.835228,4)]
+-- > [(2022-08-30 22:57:33.835228,1),(2022-08-30 22:57:34.835228,2),(2022-08-30 22:57:35.835228,3),(2022-08-30 22:57:36.835228,4)]
 fromGapsNow :: Emitter IO (Gap, a) -> CoEmitter IO (LocalTime, a)
 fromGapsNow e = do
   t0 <- liftIO getCurrentTime
@@ -127,6 +119,7 @@ gapEffect as =
       (Just (s, a')) -> sleep s >> pure (Just a')
       _ -> pure Nothing
 
+-- | Using the Gap emitter, adjust the Gap for a (Gap, a) emitter
 speedEffect ::
   Emitter IO Gap ->
   Emitter IO (Gap, a) ->
@@ -175,6 +168,7 @@ speedSkipEffect p e = evalEmitter 0 $ Emitter $ do
     (Just (n, s), Just (g, a)) ->
       lift $ sleep (bool (g / s) 0 (n >= count)) >> pure (Just a)
 
+-- | Ignore the first n gaps and immediately emit them.
 skip :: Int -> Emitter IO (Gap, a) -> CoEmitter IO (Gap, a)
 skip sk e = evalEmitter (sk + 1) $ Emitter $ do
   skip' <- get
@@ -191,6 +185,6 @@ skip sk e = evalEmitter (sk + 1) $ Emitter $ do
 -- | Replay a stamped emitter, adjusting the speed of the replay.
 --
 -- > toListM . stampE <$|> (replay 0.1 1 =<< (fromGapsNow =<< (qList (zip (0:repeat 1) [1..4]))))
--- [(2022-08-31 02:29:39.643831,1),(2022-08-31 02:29:39.643841,2),(2022-08-31 02:29:39.746998,3),(2022-08-31 02:29:39.849615,4)]
+-- > [(2022-08-31 02:29:39.643831,1),(2022-08-31 02:29:39.643841,2),(2022-08-31 02:29:39.746998,3),(2022-08-31 02:29:39.849615,4)]
 replay :: Double -> Int -> Emitter IO (LocalTime, a) -> CoEmitter IO a
 replay speed sk e = gapEffect . fmap (first (speed *)) <$> (skip sk =<< gaps e)

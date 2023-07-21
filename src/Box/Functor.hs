@@ -1,10 +1,6 @@
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE RankNTypes #-}
-
+-- | Some higher-kinded Functor types that make do until we get FunctorOf
 --
-
+-- eg https://eevie.ro/posts/2019-05-12-functor-of.html
 module Box.Functor
   ( FFunctor (..),
     FoldableM (..),

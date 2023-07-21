@@ -1,14 +1,10 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StrictData #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# OPTIONS_GHC -Wall #-}
-{-# OPTIONS_GHC -fno-warn-type-defaults #-}
-
--- | A box is something that 'commit's and 'emit's
+-- | A box is a product of a consumer and producer destructor.
+--
+-- Consumers and producers (committers and emitters) are paired in two ways:
+--
+-- - As two ends of a resource such as a file, or screen or queue; input to and output from.
+--
+-- - As the start and end of a computation pipeline.
 module Box.Box
   ( Box (..),
     CoBox,
@@ -16,6 +12,8 @@ module Box.Box
     bmap,
     foistb,
     glue,
+    Closure (..),
+    glue',
     glueN,
     glueES,
     glueS,
@@ -35,8 +33,10 @@ import Control.Applicative
   ( Alternative (empty, (<|>)),
     Applicative (liftA2),
   )
+import Control.Monad
 import Control.Monad.State.Lazy
 import Data.Bool
+import Data.Function
 import Data.Functor.Contravariant (Contravariant (contramap))
 import Data.Functor.Contravariant.Divisible
   ( Decidable (choose, lose),
@@ -44,9 +44,9 @@ import Data.Functor.Contravariant.Divisible
   )
 import Data.Profunctor (Profunctor (dimap))
 import Data.Semigroupoid
-import qualified Data.Sequence as Seq
+import Data.Sequence qualified as Seq
 import Data.Void (Void, absurd)
-import Prelude hiding (id, (.))
+import Prelude hiding (id, liftA2, (.))
 
 -- $setup
 -- >>> :set -XOverloadedStrings
@@ -92,6 +92,24 @@ bmap fc fe (Box c e) = Box (witherC fc c) (witherE fe e)
 -- 3
 glue :: (Monad m) => Committer m a -> Emitter m a -> m ()
 glue c e = fix $ \rec -> emit e >>= maybe (pure False) (commit c) >>= bool (pure ()) rec
+
+-- | Whether the committer or emitter closed the computation.
+data Closure = CommitterClosed | EmitterClosed deriving (Eq, Show, Ord)
+
+-- | Connect an emitter directly to a committer of the same type, returning whether the emitter or committer caused eventual closure.
+--
+-- >>> glue' showStdout <$|> qList [1..3]
+-- 1
+-- 2
+-- 3
+-- EmitterClosed
+glue' :: (Monad m) => Committer m a -> Emitter m a -> m Closure
+glue' c e =
+  fix $ \rec ->
+    emit e
+      >>= maybe
+        (pure EmitterClosed)
+        (commit c >=> bool (pure CommitterClosed) rec)
 
 -- | Connect a Stateful emitter to a (non-stateful) committer of the same type, supplying initial state.
 --

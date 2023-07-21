@@ -1,12 +1,4 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# OPTIONS_GHC -Wall #-}
-{-# OPTIONS_GHC -fno-warn-type-defaults #-}
 
 -- | IO effects
 module Box.IO
@@ -48,7 +40,7 @@ import Data.Foldable
 import Data.Function
 import Data.Functor.Contravariant
 import Data.IORef
-import qualified Data.Sequence as Seq
+import Data.Sequence qualified as Seq
 import Data.String
 import Data.Text as Text hiding (null)
 import Data.Text.IO as Text
@@ -94,11 +86,9 @@ toStdout = Committer $ \a -> Text.putStrLn a >> pure True
 fromStdinN :: Int -> CoEmitter IO Text
 fromStdinN n = source n Text.getLine
 
--- FIXME: This doctest sometimes fails with the last value not being printed. Hypothesis: the pipe collapses before the console print effect happens.
-
 -- | Finite console committer
 --
--- > glue <$> contramap (pack . show) <$> (toStdoutN 2) <*|> qList [1..3]
+-- >>> glue <$> contramap (pack . show) <$> (toStdoutN 2) <*|> qList [1..3]
 -- 1
 -- 2
 toStdoutN :: Int -> CoCommitter IO Text
@@ -106,12 +96,12 @@ toStdoutN n = sink n Text.putStrLn
 
 -- | Read from console, throwing away read errors
 --
--- λ> glueN 2 showStdout (readStdin :: Emitter IO Int)
--- 1
--- 1
--- hippo
--- 2
--- 2
+-- > λ> glueN 2 showStdout (readStdin :: Emitter IO Int)
+-- > 1
+-- > 1
+-- > hippo
+-- > 2
+-- > 2
 readStdin :: (Read a) => Emitter IO a
 readStdin = witherE (pure . either (const Nothing) Just) . readE $ fromStdin
 
@@ -123,11 +113,6 @@ readStdin = witherE (pure . either (const Nothing) Just) . readE $ fromStdin
 -- 3
 showStdout :: (Show a) => Committer IO a
 showStdout = contramap (Text.pack . show) toStdout
-
--- | Emits lines of Text from a handle.
--- handleEText = handleE Text.hGetLine
-
--- handleEBS = handleE Char8.hGetLine
 
 -- | Emits lines of Text from a handle.
 handleE :: (IsString a, Eq a) => (Handle -> IO a) -> Handle -> Emitter IO a
@@ -143,13 +128,7 @@ handleC action h = Committer $ \a -> do
   action h a
   pure True
 
--- | Commit lines of Text to a handle.
--- handleCBS = handleC Char8.hPutStrLn
-
--- | Emits lines of Text from a handle.
--- handleCText = handleC Text.hPutStrLn
-
--- | Emit lines of Text from a file.
+-- | Emit from a file.
 fileE :: FilePath -> BufferMode -> IOMode -> (Handle -> Emitter IO a) -> CoEmitter IO a
 fileE fp b m action = Codensity $ \eio ->
   withFile
@@ -160,13 +139,15 @@ fileE fp b m action = Codensity $ \eio ->
         eio (action h)
     )
 
+-- | Emit lines of Text from a file.
 fileEText :: FilePath -> BufferMode -> CoEmitter IO Text
 fileEText fp b = fileE fp b ReadMode (handleE Text.hGetLine)
 
+-- | Emit lines of ByteString from a file.
 fileEBS :: FilePath -> BufferMode -> CoEmitter IO ByteString
 fileEBS fp b = fileE fp b ReadMode (handleE Char8.hGetLine)
 
--- | Commit lines of Text to a file.
+-- | Commit to a file.
 fileC :: FilePath -> IOMode -> BufferMode -> (Handle -> Committer IO a) -> CoCommitter IO a
 fileC fp m b action = Codensity $ \cio ->
   withFile
@@ -177,9 +158,11 @@ fileC fp m b action = Codensity $ \cio ->
         cio (action h)
     )
 
+-- | Commit Text to a file, as a line.
 fileCText :: FilePath -> BufferMode -> IOMode -> CoCommitter IO Text
 fileCText fp m b = fileC fp b m (handleC Text.hPutStrLn)
 
+-- | Commit ByteString to a file, as a line.
 fileCBS :: FilePath -> BufferMode -> IOMode -> CoCommitter IO ByteString
 fileCBS fp m b = fileC fp b m (handleC Char8.hPutStrLn)
 
@@ -251,12 +234,12 @@ changer a0 e = evalEmitter a0 $ Emitter $ do
 -- | quit a process based on a Bool emitter
 --
 -- > quit <$> speedEffect (pure 2) <$> (resetGap 5) <*|> pure io
--- 0
--- 1
--- 2
--- 3
--- 4
--- Left True
+-- > 0
+-- > 1
+-- > 2
+-- > 3
+-- > 4
+-- > Left True
 quit :: Emitter IO Bool -> IO a -> IO (Either Bool a)
 quit flag io = race (checkE flag) io
 

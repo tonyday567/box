@@ -1,8 +1,3 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE RankNTypes #-}
-{-# OPTIONS_GHC -Wall #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 -- | Extra Codensity operators.
@@ -33,7 +28,7 @@ instance (Functor m, Monoid a) => Monoid (Codensity m a) where
 
   mappend = (<>)
 
--- | close a continuation
+-- | close the Codensity continuation.
 --
 -- >>> close $ glue showStdout <$> qList [1..3]
 -- 1
@@ -42,7 +37,7 @@ instance (Functor m, Monoid a) => Monoid (Codensity m a) where
 close :: Codensity m (m r) -> m r
 close x = runCodensity x id
 
--- | fmap then close over a Codensity
+-- | fmap then close a continuation.
 --
 -- >>> process (glue showStdout) (qList [1..3])
 -- 1
@@ -53,7 +48,7 @@ process f k = runCodensity k f
 
 infixr 0 <$|>
 
--- | fmap then close over a Codensity
+-- | fmap then close a continuation.
 --
 -- >>> glue showStdout <$|> qList [1..3]
 -- 1
@@ -64,7 +59,7 @@ infixr 0 <$|>
 
 infixr 3 <*|>
 
--- | apply to a continuation and close.
+-- | apply and then close a continuation.
 --
 -- >>> glue <$> (pure showStdout) <*|> qList [1..3]
 -- 1

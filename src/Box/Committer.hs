@@ -1,14 +1,6 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE RebindableSyntax #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# OPTIONS_GHC -Wall #-}
-
--- | `commit`
+-- | 'Committer' wraps a consumer destructor.
+--
+-- "Commitment is an act, not a word." ~ Jean-Paul Sartre
 module Box.Committer
   ( Committer (..),
     CoCommitter,
@@ -23,7 +15,7 @@ import Box.Functor
 import Control.Monad.State.Lazy
 import Data.Functor.Contravariant
 import Data.Functor.Contravariant.Divisible
-import qualified Data.Sequence as Seq
+import Data.Sequence qualified as Seq
 import Data.Void
 import Prelude
 
@@ -33,9 +25,7 @@ import Prelude
 -- >>> import Box
 -- >>> import Data.Bool
 
--- | A Committer 'commit's values of type a and signals success or otherwise. A Sink and a Consumer are some other metaphors for this.
---
--- A Committer absorbs the value being committed; the value disappears into the opaque thing that is a Committer from the pov of usage.
+-- | A Committer 'commit's values of type a and signals success or otherwise. A sink or a consumer are some other metaphors for this. A Committer absorbs the value being committed; the value disappears into the opaque thing that is a Committer from the pov of usage.
 --
 -- >>> commit toStdout "I'm committed!"
 -- I'm committed!
@@ -93,7 +83,7 @@ witherC f c = Committer go
         Nothing -> pure True
         Just fb' -> commit c fb'
 
--- | Convert a committer to be a list committer.  Think mconcat.
+-- | Convert a committer to be a list committer.
 --
 -- >>> glue showStdout <$|> qList [[1..3]]
 -- [1,2,3]
