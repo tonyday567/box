@@ -1,4 +1,6 @@
--- | `commit`
+-- | 'Committer' wraps a consumer destructor.
+--
+-- "Commitment is an act, not a word." ~ Jean-Paul Sartre
 module Box.Committer
   ( Committer (..),
     CoCommitter,

@@ -27,6 +27,7 @@ import Control.Applicative
   ( Alternative (empty, (<|>)),
     Applicative (liftA2),
   )
+import Control.Monad
 import Control.Monad.State.Lazy
 import Data.Bool
 import Data.Function
@@ -96,10 +97,7 @@ glue' c e =
     emit e
       >>= maybe
         (pure EmitterClosed)
-        ( \a ->
-            commit c a
-              >>= bool (pure CommitterClosed) rec
-        )
+        (commit c >=> bool (pure CommitterClosed) rec)
 
 -- | Connect a Stateful emitter to a (non-stateful) committer of the same type, supplying initial state.
 --

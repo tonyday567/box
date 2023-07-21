@@ -1,13 +1,13 @@
--- | A profunctor effect
+-- | A profunctor effect system
 --
--- “Boxes are surprisingly bulky. Discard or recycle the box your cell phone comes in as soon as you unpack it. You don’t need the manual or the CD that comes with it either. You’ll figure out the applications you need through using it.” — Marie Kondo
+-- “Boxes are surprisingly bulky. Discard or recycle the box your cell phone comes in as soon as you unpack it. You don’t need the manual or the CD that comes with it either. You’ll figure out the applications you need through using it.” ~ Marie Kondo
 module Box
   ( -- $usage
-    module Box.Box,
     module Box.Committer,
-    module Box.Connectors,
-    module Box.Codensity,
     module Box.Emitter,
+    module Box.Box,
+    module Box.Codensity,
+    module Box.Connectors,
     module Box.Functor,
     module Box.IO,
     module Box.Queue,
