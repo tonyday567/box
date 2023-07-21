@@ -75,7 +75,7 @@ type Gap = Double
 -- | Convert stamped emitter to gap between emits in seconds
 --
 -- > toListM <$|> (gaps =<< (fromGapsNow =<< (qList (zip (0:repeat 1) [1..4]))))
--- [(0.0,1),(1.0,2),(1.0,3),(1.0,4)]
+-- > [(0.0,1),(1.0,2),(1.0,3),(1.0,4)]
 gaps :: Emitter IO (LocalTime, a) -> CoEmitter IO (Gap, a)
 gaps e = evalEmitter Nothing $ Emitter $ do
   r <- lift $ emit e
@@ -102,7 +102,7 @@ fromGaps t0 e = evalEmitter t0 $ Emitter $ do
 -- | Convert gaps in seconds to stamps starting with current time
 --
 -- > toListM <$|> (fromGapsNow =<< (qList (zip (0:repeat 1) [1..4])))
--- [(2022-08-30 22:57:33.835228,1),(2022-08-30 22:57:34.835228,2),(2022-08-30 22:57:35.835228,3),(2022-08-30 22:57:36.835228,4)]
+-- > [(2022-08-30 22:57:33.835228,1),(2022-08-30 22:57:34.835228,2),(2022-08-30 22:57:35.835228,3),(2022-08-30 22:57:36.835228,4)]
 fromGapsNow :: Emitter IO (Gap, a) -> CoEmitter IO (LocalTime, a)
 fromGapsNow e = do
   t0 <- liftIO getCurrentTime
@@ -185,6 +185,6 @@ skip sk e = evalEmitter (sk + 1) $ Emitter $ do
 -- | Replay a stamped emitter, adjusting the speed of the replay.
 --
 -- > toListM . stampE <$|> (replay 0.1 1 =<< (fromGapsNow =<< (qList (zip (0:repeat 1) [1..4]))))
--- [(2022-08-31 02:29:39.643831,1),(2022-08-31 02:29:39.643841,2),(2022-08-31 02:29:39.746998,3),(2022-08-31 02:29:39.849615,4)]
+-- > [(2022-08-31 02:29:39.643831,1),(2022-08-31 02:29:39.643841,2),(2022-08-31 02:29:39.746998,3),(2022-08-31 02:29:39.849615,4)]
 replay :: Double -> Int -> Emitter IO (LocalTime, a) -> CoEmitter IO a
 replay speed sk e = gapEffect . fmap (first (speed *)) <$> (skip sk =<< gaps e)

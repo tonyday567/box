@@ -36,9 +36,7 @@ import Prelude
 -- >>> import Data.Bool
 -- >>> import Data.Text (Text)
 
--- | an `Emitter` `emit`s values of type Maybe a. Source & Producer are also appropriate metaphors.
---
--- An Emitter reaches into itself for the value to emit, where itself is an opaque thing from the pov of usage.
+-- | An `Emitter` `emit`s values of type 'Maybe' a. Source and producer are similar metaphors. An Emitter reaches into itself for the value to emit, where itself is an opaque thing from the pov of usage.
 --
 -- >>> e = Emitter (pure (Just "I'm emitted"))
 -- >>> emit e
@@ -114,7 +112,7 @@ toListM e = D.toList <$> foldrM (\a acc -> fmap (`D.snoc` a) acc) (pure D.empty)
 
 -- | A monadic [Witherable](https://hackage.haskell.org/package/witherable)
 --
--- >>> close $ toListM <$> witherE (\x -> bool (print x >> pure Nothing) (pure (Just x)) (even x)) <$> (qList [1..3])
+-- >>> toListM <$|> witherE (\x -> bool (print x >> pure Nothing) (pure (Just x)) (even x)) <$> (qList [1..3])
 -- 1
 -- []
 witherE :: (Monad m) => (a -> m (Maybe b)) -> Emitter m a -> Emitter m b
@@ -132,7 +130,7 @@ witherE f e = Emitter go
 
 -- | Like witherE but does not emit Nothing on filtering.
 --
--- >>> close $ toListM <$> filterE (\x -> bool (print x >> pure Nothing) (pure (Just x)) (even x)) <$> (qList [1..3])
+-- >>> toListM <$|> filterE (\x -> bool (print x >> pure Nothing) (pure (Just x)) (even x)) <$> (qList [1..3])
 -- 1
 -- 3
 -- [2]
@@ -151,7 +149,7 @@ filterE f e = Emitter go
 
 -- | Read parse 'Emitter', returning the original text on error
 --
--- >>> process (toListM . readE) (qList ["1","2","3","four"]) :: IO [Either Text Int]
+-- >>> (toListM . readE) <$|> (qList ["1","2","3","four"]) :: IO [Either Text Int]
 -- [Right 1,Right 2,Right 3,Left "four"]
 readE ::
   (Functor m, Read a) =>
@@ -167,7 +165,7 @@ readE = fmap $ parsed . unpack
 -- | Convert a list emitter to a (Stateful) element emitter.
 --
 -- >>> import Control.Monad.State.Lazy
--- >>> close $ flip runStateT [] . toListM . unlistE <$> (qList [[0..3],[5..7]])
+-- >>> flip runStateT [] . toListM . unlistE <$|> (qList [[0..3],[5..7]])
 -- ([0,1,2,3,5,6,7],[])
 unlistE :: (Monad m) => Emitter m [a] -> Emitter (StateT [a] m) a
 unlistE es = Emitter unlists
@@ -190,7 +188,7 @@ unlistE es = Emitter unlists
 -- | Take n emits.
 --
 -- >>> import Control.Monad.State.Lazy
--- >>> close $ flip evalStateT 0 <$> toListM . takeE 4 <$> qList [0..]
+-- >>> flip evalStateT 0 <$|> toListM . takeE 4 <$> qList [0..]
 -- [0,1,2,3]
 takeE :: (Monad m) => Int -> Emitter m a -> Emitter (StateT Int m) a
 takeE n (Emitter e) =
@@ -208,7 +206,7 @@ dropE n e = Codensity $ \k -> do
 
 -- | Take from an emitter until a predicate.
 --
--- >>> process (toListM . takeUntilE (==3)) (qList [0..])
+-- >>> (toListM . takeUntilE (==3)) <$|> (qList [0..])
 -- [0,1,2]
 takeUntilE :: (Monad m) => (a -> Bool) -> Emitter m a -> Emitter m a
 takeUntilE p e = Emitter $ do

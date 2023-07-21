@@ -1,4 +1,10 @@
--- | A box is something that 'commit's and 'emit's
+-- | A box is a product of a consumer and producer destructor.
+--
+-- Consumers and producers (committers and emitters) are paired in two ways:
+--
+-- - As two ends of a resource such as a file, or screen or queue; input to and output from.
+--
+-- - As the start and end of a computation pipeline.
 module Box.Box
   ( Box (..),
     CoBox,
@@ -87,10 +93,16 @@ bmap fc fe (Box c e) = Box (witherC fc c) (witherE fe e)
 glue :: (Monad m) => Committer m a -> Emitter m a -> m ()
 glue c e = fix $ \rec -> emit e >>= maybe (pure False) (commit c) >>= bool (pure ()) rec
 
--- | Whether the committer or emitter closed resulting in glue closing.
+-- | Whether the committer or emitter closed the computation.
 data Closure = CommitterClosed | EmitterClosed deriving (Eq, Show, Ord)
 
 -- | Connect an emitter directly to a committer of the same type, returning whether the emitter or committer caused eventual closure.
+--
+-- >>> glue' showStdout <$|> qList [1..3]
+-- 1
+-- 2
+-- 3
+-- EmitterClosed
 glue' :: (Monad m) => Committer m a -> Emitter m a -> m Closure
 glue' c e =
   fix $ \rec ->

@@ -86,11 +86,9 @@ toStdout = Committer $ \a -> Text.putStrLn a >> pure True
 fromStdinN :: Int -> CoEmitter IO Text
 fromStdinN n = source n Text.getLine
 
--- FIXME: This doctest sometimes fails with the last value not being printed. Hypothesis: the pipe collapses before the console print effect happens.
-
 -- | Finite console committer
 --
--- > glue <$> contramap (pack . show) <$> (toStdoutN 2) <*|> qList [1..3]
+-- >>> glue <$> contramap (pack . show) <$> (toStdoutN 2) <*|> qList [1..3]
 -- 1
 -- 2
 toStdoutN :: Int -> CoCommitter IO Text
@@ -98,12 +96,12 @@ toStdoutN n = sink n Text.putStrLn
 
 -- | Read from console, throwing away read errors
 --
--- λ> glueN 2 showStdout (readStdin :: Emitter IO Int)
--- 1
--- 1
--- hippo
--- 2
--- 2
+-- > λ> glueN 2 showStdout (readStdin :: Emitter IO Int)
+-- > 1
+-- > 1
+-- > hippo
+-- > 2
+-- > 2
 readStdin :: (Read a) => Emitter IO a
 readStdin = witherE (pure . either (const Nothing) Just) . readE $ fromStdin
 
@@ -115,11 +113,6 @@ readStdin = witherE (pure . either (const Nothing) Just) . readE $ fromStdin
 -- 3
 showStdout :: (Show a) => Committer IO a
 showStdout = contramap (Text.pack . show) toStdout
-
--- | Emits lines of Text from a handle.
--- handleEText = handleE Text.hGetLine
-
--- handleEBS = handleE Char8.hGetLine
 
 -- | Emits lines of Text from a handle.
 handleE :: (IsString a, Eq a) => (Handle -> IO a) -> Handle -> Emitter IO a
@@ -241,12 +234,12 @@ changer a0 e = evalEmitter a0 $ Emitter $ do
 -- | quit a process based on a Bool emitter
 --
 -- > quit <$> speedEffect (pure 2) <$> (resetGap 5) <*|> pure io
--- 0
--- 1
--- 2
--- 3
--- 4
--- Left True
+-- > 0
+-- > 1
+-- > 2
+-- > 3
+-- > 4
+-- > Left True
 quit :: Emitter IO Bool -> IO a -> IO (Either Bool a)
 quit flag io = race (checkE flag) io
 
