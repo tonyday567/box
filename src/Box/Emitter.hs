@@ -6,6 +6,7 @@ module Box.Emitter
     type CoEmitter,
     toListM,
     witherE,
+    filterE,
     readE,
     unlistE,
     takeE,
@@ -113,8 +114,7 @@ toListM e = D.toList <$> foldrM (\a acc -> fmap (`D.snoc` a) acc) (pure D.empty)
 --
 -- >>> close $ toListM <$> witherE (\x -> bool (print x >> pure Nothing) (pure (Just x)) (even x)) <$> (qList [1..3])
 -- 1
--- 3
--- [2]
+-- []
 witherE :: (Monad m) => (a -> m (Maybe b)) -> Emitter m a -> Emitter m b
 witherE f e = Emitter go
   where
@@ -125,8 +125,28 @@ witherE f e = Emitter go
         Just a' -> do
           fa <- f a'
           case fa of
+            Nothing -> pure Nothing
+            Just fa' -> pure (Just fa')
+
+-- | Like witherE but does not emit Nothing on filtering.
+--
+-- >>> close $ toListM <$> filterE (\x -> bool (print x >> pure Nothing) (pure (Just x)) (even x)) <$> (qList [1..3])
+-- 1
+-- 3
+-- [2]
+filterE :: (Monad m) => (a -> m (Maybe b)) -> Emitter m a -> Emitter m b
+filterE f e = Emitter go
+  where
+    go = do
+      a <- emit e
+      case a of
+        Nothing -> pure Nothing
+        Just a' -> do
+          fa <- f a'
+          case fa of
             Nothing -> go
             Just fa' -> pure (Just fa')
+
 
 -- | Read parse 'Emitter', returning the original text on error
 --

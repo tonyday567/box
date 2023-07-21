@@ -115,3 +115,21 @@ library
     , stm             ^>= 2.5.1
     , text            >=1.2 && < 2.1
     , time            >=1.9 && <1.13
+
+executable box-speed
+  import: ghc2021-stanza
+  import: ghc-options-stanza
+  main-is: speed.hs
+  hs-source-dirs:
+    app
+  build-depends:
+    base >=4.7 && <5,
+    box,
+    perf ^>= 0.11,
+    containers,
+    optparse-applicative,
+  ghc-options:
+    -funbox-strict-fields
+    -rtsopts
+    -threaded
+    -O2

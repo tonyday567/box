@@ -1,3 +1,6 @@
 packages:
   box.cabal
+  ../perf/perf.cabal
 
+allow-newer: numhask-space:semigroupoids,
+             tdigest:semigroupoids

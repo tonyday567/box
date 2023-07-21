@@ -6,6 +6,8 @@ module Box.Box
     bmap,
     foistb,
     glue,
+    Closure (..),
+    glue',
     glueN,
     glueES,
     glueS,
@@ -83,6 +85,18 @@ bmap fc fe (Box c e) = Box (witherC fc c) (witherE fe e)
 -- 3
 glue :: (Monad m) => Committer m a -> Emitter m a -> m ()
 glue c e = fix $ \rec -> emit e >>= maybe (pure False) (commit c) >>= bool (pure ()) rec
+
+-- | Whether the committer or emitter closed resulting in glue closing.
+data Closure = CommitterClosed | EmitterClosed deriving (Eq, Show, Ord)
+
+-- | Connect an emitter directly to a committer of the same type, returning whether the emitter or committer caused eventual closure.
+glue' :: (Monad m) => Committer m a -> Emitter m a -> m Closure
+glue' c e =
+  fix $ \rec ->
+    emit e >>=
+    maybe (pure EmitterClosed)
+      (\a -> commit c a >>=
+            bool (pure CommitterClosed) rec)
 
 -- | Connect a Stateful emitter to a (non-stateful) committer of the same type, supplying initial state.
 --
