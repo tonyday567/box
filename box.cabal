@@ -3,6 +3,8 @@ name: box
 version: 0.9.2.0
 license: BSD-3-Clause
 license-file: LICENSE
+copyright: Tony Day (c) 2017
+category: control
 author: Tony Day
 maintainer: tonyday567@gmail.com
 homepage: https://github.com/tonyday567/box#readme
