@@ -86,9 +86,9 @@ sink1 f e = do
 
 -- | Create a finite Committer Unbounded Queue.
 --
--- >>> glue <$> sink 2 print <*|> qList [1..3]
--- 1
--- 2
+-- > glue <$> sink 2 print <*|> qList [1..3]
+-- > 1
+-- > 2
 sink :: Int -> (a -> IO ()) -> CoCommitter IO a
 sink n f = sinkWith Unbounded n f
 
