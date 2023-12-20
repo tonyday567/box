@@ -10,6 +10,8 @@ module Box.Queue
     fromActionWith,
     toBoxM,
     toBoxSTM,
+    concurrentlyLeft,
+    concurrentlyRight,
   )
 where
 

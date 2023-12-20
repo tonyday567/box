@@ -4,6 +4,7 @@
 module Box.IO
   ( fromStdin,
     toStdout,
+    stdBox,
     fromStdinN,
     toStdoutN,
     readStdin,
@@ -18,6 +19,8 @@ module Box.IO
     fileEBS,
     fileCText,
     fileCBS,
+    toLineBox,
+    fromLineBox,
     logConsoleC,
     logConsoleE,
     pauser,
@@ -27,6 +30,7 @@ module Box.IO
   )
 where
 
+import Box.Box
 import Box.Codensity
 import Box.Committer
 import Box.Connectors
@@ -43,6 +47,7 @@ import Data.IORef
 import Data.Sequence qualified as Seq
 import Data.String
 import Data.Text as Text hiding (null)
+import Data.Text.Encoding
 import Data.Text.IO as Text
 import System.IO as IO
 import Prelude
@@ -74,6 +79,10 @@ fromStdin = Emitter $ Just <$> Text.getLine
 -- True
 toStdout :: Committer IO Text
 toStdout = Committer $ \a -> Text.putStrLn a >> pure True
+
+-- | A 'Box' to and from std, with an escape phrase.
+stdBox :: Text -> Box IO Text Text
+stdBox q = Box toStdout (takeUntilE (== q) fromStdin)
 
 -- | Finite console emitter
 --
@@ -165,6 +174,14 @@ fileCText fp m b = fileC fp b m (handleC Text.hPutStrLn)
 -- | Commit ByteString to a file, as a line.
 fileCBS :: FilePath -> BufferMode -> IOMode -> CoCommitter IO ByteString
 fileCBS fp m b = fileC fp b m (handleC Char8.hPutStrLn)
+
+-- | Convert a 'Box' from ByteString to lines of Text.
+toLineBox :: Text -> Box IO ByteString ByteString -> CoBox IO Text Text
+toLineBox end (Box c e) = Box (contramap (encodeUtf8 . (<> end)) c) <$> evalEmitter [] (unlistE $ fmap (Text.lines . decodeUtf8Lenient) e)
+
+-- | Convert a 'Box' from lines of Text to ByteStrings.
+fromLineBox :: Text -> Box IO Text Text -> Box IO ByteString ByteString
+fromLineBox end (Box c e) = Box (contramap (Text.lines . decodeUtf8Lenient) (listC c)) (fmap (encodeUtf8 . (<> end)) e)
 
 -- | Commit to an IORef
 --
