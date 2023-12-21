@@ -11,16 +11,12 @@ What is all this stuff around me; this stream of experiences that I seem to be h
 * Usage
 
 #+begin_src haskell
-:set prompt "> "
 :set -XOverloadedStrings
 import Box
 import Prelude
 import Data.Function
 import Data.Bool
 #+end_src
-
-#+RESULTS:
-: >
 
 Standard IO echoing:
 
