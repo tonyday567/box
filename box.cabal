@@ -1,6 +1,6 @@
 cabal-version: 3.0
 name: box
-version: 0.9.3.0
+version: 0.9.3.1
 license: BSD-3-Clause
 license-file: LICENSE
 copyright: Tony Day (c) 2017
@@ -13,7 +13,7 @@ synopsis: A profunctor effect system.
 description:
     This might be a profunctor effect system, but unlike all the others. See the project readme.org for usage and discussion: https://github.com/tonyday567/box#readme.org
 build-type: Simple
-tested-with: GHC ==8.10.7 || ==9.4.7 || ==9.6.3 || ==9.8.1
+tested-with: GHC ==8.10.7 || ==9.2.7 || ==9.4.7 || ==9.6.3 || ==9.8.1
 extra-doc-files:
     ChangeLog.md
     readme.org

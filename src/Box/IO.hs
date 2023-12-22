@@ -177,11 +177,11 @@ fileCBS fp m b = fileC fp b m (handleC Char8.hPutStrLn)
 
 -- | Convert a 'Box' from ByteString to lines of Text.
 toLineBox :: Text -> Box IO ByteString ByteString -> CoBox IO Text Text
-toLineBox end (Box c e) = Box (contramap (encodeUtf8 . (<> end)) c) <$> evalEmitter [] (unlistE $ fmap (Text.lines . decodeUtf8Lenient) e)
+toLineBox end (Box c e) = Box (contramap (encodeUtf8 . (<> end)) c) <$> evalEmitter [] (unlistE $ fmap (Text.lines . decodeUtf8) e)
 
 -- | Convert a 'Box' from lines of Text to ByteStrings.
 fromLineBox :: Text -> Box IO Text Text -> Box IO ByteString ByteString
-fromLineBox end (Box c e) = Box (contramap (Text.lines . decodeUtf8Lenient) (listC c)) (fmap (encodeUtf8 . (<> end)) e)
+fromLineBox end (Box c e) = Box (contramap (Text.lines . decodeUtf8) (listC c)) (fmap (encodeUtf8 . (<> end)) e)
 
 -- | Commit to an IORef
 --
