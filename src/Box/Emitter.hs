@@ -1,5 +1,3 @@
-{-# LANGUAGE ExplicitNamespaces #-}
-
 -- | 'Emitter' wraps a producer destructor.
 --
 -- "Every Thought emits a Dice Throw" ~ Stéphane Mallarmé

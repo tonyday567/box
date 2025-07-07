@@ -46,7 +46,7 @@ import Data.Functor.Contravariant
 import Data.IORef
 import Data.Sequence qualified as Seq
 import Data.String
-import Data.Text as Text hiding (null)
+import Data.Text as Text hiding (null, show)
 import Data.Text.Encoding
 import Data.Text.IO as Text
 import System.IO as IO

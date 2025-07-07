@@ -6,8 +6,6 @@ A profunctor effect system.
 
 > What is all this stuff around me; this stream of experiences that I seem to be having all the time? Throughout history there have been people who say it is all illusion. ~ S Blackmore
 
-<a id="org2ba6799"></a>
-
 # Usage
 
     :set -XOverloadedStrings
@@ -43,12 +41,7 @@ Emitting from a list:
     echo: echo
 
 
-<a id="orgb128561"></a>
-
 # Library Design
-
-
-<a id="orgd99cf15"></a>
 
 ### Resource Coinduction
 
@@ -66,9 +59,6 @@ So how do you apply this to resources and their effects? One answer is that you 
 
 These are the destructors that need to be transparently exposed if effects are to be good citizens in Haskell.
 
-
-<a id="org2a2a0b7"></a>
-
 ### What is a Box?
 
 A Box is simply the product of a consumer destructor and a producer destructor.
@@ -77,9 +67,6 @@ A Box is simply the product of a consumer destructor and a producer destructor.
       { committer :: Committer m c,
         emitter :: Emitter m e
       }
-
-
-<a id="org23b3a97"></a>
 
 ### Committer
 
@@ -106,9 +93,6 @@ A Committer is a contravariant functor, so contramap can be used to modify this:
     echoC :: Committer IO Text
     echoC = contramap (Text.unpack . ("echo: "<>)) stdC
 
-
-<a id="org5a69dab"></a>
-
 ### Emitter
 
 The library denotes a producer by wrapping a production destructor and calling it an Emitter.
@@ -133,8 +117,6 @@ As a functor instance, an Emitter can be modified with fmap. Several library fun
         This binding for ‘echoE’ shadows the existing binding
           defined at <interactive>:49:1
 
-
-<a id="org7eb6547"></a>
 
 ### Box duality
 
@@ -163,9 +145,6 @@ A Box represents a duality in two ways:
 Effectively the same computation, for a Box, is:
 
     fuse (pure . pure) stdIO
-
-
-<a id="org6c7b1fc"></a>
 
 ### Continuation
 
@@ -231,9 +210,6 @@ Given the ubiquity of this method, the library supplies two applicative style op
     b
     c
 
-
-<a id="org9d9d756"></a>
-
 # Explicit Continuation
 
 Yield-style streaming libraries are [coroutines](https://rubenpieters.github.io/assets/papers/JFP20-pipes.pdf), sum types that embed and mix continuation logic in with other stuff like effect decontruction. `box` sticks to a corner case of a product type representing a consumer and producer. The major drawback of eschewing coroutines is that continuations become explicit and difficult to hide. One example; taking the first n elements of an Emitter:
@@ -251,29 +227,17 @@ A disappointing type. The state monad can not be hidden, the running count has t
     glueES :: (Monad m) => s -> Committer m a -> Emitter (StateT s m) a -> m ()
     glueES s c e = flip evalStateT s $ glue (foist lift c) e
 
-
-<a id="orgde76b6e"></a>
-
 # Future directions
 
 The design and concepts contained within the box library is a hodge-podge, but an interesting mess, being at quite a busy confluence of recent developments.
-
-
-<a id="orga1ab71e"></a>
 
 ## Optics
 
 A Box is an adapter in the [language of optics](http://www.cs.ox.ac.uk/people/jeremy.gibbons/publications/poptics.pdf) and the relationship between a resource&rsquo;s committer and emitter could be modelled by other optics.
 
-
-<a id="org1cf8e47"></a>
-
 ## Categorical Profunctor
 
 The deprecation of Box.Functor awaits the development of [categorical functors](https://github.com/haskell/core-libraries-committee/issues/91#issuecomment-1325337471). Similarly to Filterable the type of a Box could be something like `FunctorOf Op(Kleisli Maybe) (Kleisli Maybe) (->)`. Or it could be something like the SISO type in [Programming with Monoidal Profunctors and Semiarrows](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4496714).
-
-
-<a id="orgedd280b"></a>
 
 ## Wider Types
 
@@ -303,9 +267,6 @@ Alternatively, the types could be widened:
     type CommitterB m a = Committer (MaybeT m) a
     type EmitterB m a = Emitter (MaybeT m) a
     type BoxB m b a = Box (MaybeT m) (MaybeT m) b a
-
-
-<a id="orgae9938a"></a>
 
 ## Introduce a [nucleus](https://golem.ph.utexas.edu/category/2013/08/the_nucleus_of_a_profunctor_so.html)
 
