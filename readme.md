@@ -1,10 +1,9 @@
-# box 
+[![img](https://img.shields.io/hackage/v/box.svg)](https://hackage.haskell.org/package/box) [![img](https://github.com/tonyday567/box/actions/workflows/haskell-ci.yml/badge.svg)](https://github.com/tonyday567/box/actions/workflows/haskell-ci.yml)
 
-[![hackage](https://img.shields.io/hackage/v/box.svg)](https://hackage.haskell.org/package/box) [![build](https://github.com/tonyday567/box/actions/workflows/haskell-ci.yml/badge.svg)](https://github.com/tonyday567/box/actions/workflows/haskell-ci.yml)
-
-A profunctor process for dealing with effects.
+A profunctor effect system.
 
 > What is all this stuff around me; this stream of experiences that I seem to be having all the time? Throughout history there have been people who say it is all illusion. ~ S Blackmore
+
 
 # Usage
 
@@ -43,6 +42,7 @@ Emitting from a list:
 
 # Library Design
 
+
 ### Resource Coinduction
 
 Haskell has an affinity with [coinductive functions](https://www.reddit.com/r/haskell/comments/j3kbge/comment/g7foelq/?utm_source=share&utm_medium=web2x&context=3); functions should expose destructors and allow for infinite data.
@@ -59,6 +59,7 @@ So how do you apply this to resources and their effects? One answer is that you 
 
 These are the destructors that need to be transparently exposed if effects are to be good citizens in Haskell.
 
+
 ### What is a Box?
 
 A Box is simply the product of a consumer destructor and a producer destructor.
@@ -67,6 +68,7 @@ A Box is simply the product of a consumer destructor and a producer destructor.
       { committer :: Committer m c,
         emitter :: Emitter m e
       }
+
 
 ### Committer
 
@@ -92,6 +94,7 @@ A Committer is a contravariant functor, so contramap can be used to modify this:
     
     echoC :: Committer IO Text
     echoC = contramap (Text.unpack . ("echo: "<>)) stdC
+
 
 ### Emitter
 
@@ -145,6 +148,7 @@ A Box represents a duality in two ways:
 Effectively the same computation, for a Box, is:
 
     fuse (pure . pure) stdIO
+
 
 ### Continuation
 
@@ -210,6 +214,7 @@ Given the ubiquity of this method, the library supplies two applicative style op
     b
     c
 
+
 # Explicit Continuation
 
 Yield-style streaming libraries are [coroutines](https://rubenpieters.github.io/assets/papers/JFP20-pipes.pdf), sum types that embed and mix continuation logic in with other stuff like effect decontruction. `box` sticks to a corner case of a product type representing a consumer and producer. The major drawback of eschewing coroutines is that continuations become explicit and difficult to hide. One example; taking the first n elements of an Emitter:
@@ -227,17 +232,21 @@ A disappointing type. The state monad can not be hidden, the running count has t
     glueES :: (Monad m) => s -> Committer m a -> Emitter (StateT s m) a -> m ()
     glueES s c e = flip evalStateT s $ glue (foist lift c) e
 
+
 # Future directions
 
 The design and concepts contained within the box library is a hodge-podge, but an interesting mess, being at quite a busy confluence of recent developments.
+
 
 ## Optics
 
 A Box is an adapter in the [language of optics](http://www.cs.ox.ac.uk/people/jeremy.gibbons/publications/poptics.pdf) and the relationship between a resource&rsquo;s committer and emitter could be modelled by other optics.
 
+
 ## Categorical Profunctor
 
 The deprecation of Box.Functor awaits the development of [categorical functors](https://github.com/haskell/core-libraries-committee/issues/91#issuecomment-1325337471). Similarly to Filterable the type of a Box could be something like `FunctorOf Op(Kleisli Maybe) (Kleisli Maybe) (->)`. Or it could be something like the SISO type in [Programming with Monoidal Profunctors and Semiarrows](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4496714).
+
 
 ## Wider Types
 
@@ -267,6 +276,7 @@ Alternatively, the types could be widened:
     type CommitterB m a = Committer (MaybeT m) a
     type EmitterB m a = Emitter (MaybeT m) a
     type BoxB m b a = Box (MaybeT m) (MaybeT m) b a
+
 
 ## Introduce a [nucleus](https://golem.ph.utexas.edu/category/2013/08/the_nucleus_of_a_profunctor_so.html)
 
