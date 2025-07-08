@@ -1,6 +1,6 @@
 # box 
 
-[![img](https://img.shields.io/hackage/v/box.svg)](https://hackage.haskell.org/package/box) [![img](https://github.com/tonyday567/box/actions/workflows/haskell-ci/badge.svg)](https://github.com/tonyday567/box/actions/workflows/haskell-ci.yml)
+[![hackage](https://img.shields.io/hackage/v/box.svg)](https://hackage.haskell.org/package/box) [![build](https://github.com/tonyday567/box/actions/workflows/haskell-ci.yml/badge.svg)](https://github.com/tonyday567/box/actions/workflows/haskell-ci.yml)
 
 A profunctor process for dealing with effects.
 
