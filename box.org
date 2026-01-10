@@ -1,6 +1,6 @@
 #+TITLE: box
 
-[[https://hackage.haskell.org/package/box][file:https://img.shields.io/hackage/v/box.svg]] [[https://github.com/tonyday567/box/actions?query=workflow%3Ahaskell-ci][file:https://github.com/tonyday567/box/workflows/haskell-ci/badge.svg]]
+[[https://hackage.haskell.org/package/box][file:https://img.shields.io/hackage/v/box.svg]] [[https://github.com/tonyday567/box/actions/workflows/haskell-ci.yml][file:https://github.com/tonyday567/box/actions/workflows/haskell-ci.yml/badge.svg]]
 
 A profunctor effect system.
 
