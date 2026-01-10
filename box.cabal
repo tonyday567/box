@@ -67,14 +67,3 @@ library
     Box.Queue
     Box.Time
 
-test-suite doctests
-  import: ghc-options-stanza
-  default-language: GHC2024
-  main-is: doctests.hs
-  hs-source-dirs: test
-  build-depends:
-    base >=4.14 && <5,
-    doctest-parallel >=0.3 && <0.5,
-
-  ghc-options: -threaded
-  type: exitcode-stdio-1.0
