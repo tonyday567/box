@@ -1,6 +1,6 @@
 cabal-version: 3.0
 name: box
-version: 0.9.3.3
+version: 0.9.4.0
 license: BSD-3-Clause
 license-file: LICENSE
 copyright: Tony Day (c) 2017
@@ -15,10 +15,9 @@ description:
 
 build-type: Simple
 tested-with:
-  ghc ==9.6.7
-  ghc ==9.8.4
-  ghc ==9.10.2
+  ghc ==9.10.3
   ghc ==9.12.2
+  ghc ==9.14.1
 
 extra-doc-files:
   ChangeLog.md
@@ -36,29 +35,9 @@ common ghc-options-stanza
     -Wincomplete-uni-patterns
     -Wredundant-constraints
 
-common ghc2024-additions
-  default-extensions:
-    DataKinds
-    DerivingStrategies
-    DisambiguateRecordFields
-    ExplicitNamespaces
-    GADTs
-    LambdaCase
-    MonoLocalBinds
-    RoleAnnotations
-
-common ghc2024-stanza
-  if impl(ghc >=9.10)
-    default-language:
-      GHC2024
-  else
-    import: ghc2024-additions
-    default-language:
-      GHC2021
-
 library
   import: ghc-options-stanza
-  import: ghc2024-stanza
+  default-language: GHC2024
   hs-source-dirs: src
   build-depends:
     async >=2.2 && <2.3,
@@ -89,7 +68,8 @@ library
     Box.Time
 
 test-suite doctests
-  import: ghc2024-stanza
+  import: ghc-options-stanza
+  default-language: GHC2024
   main-is: doctests.hs
   hs-source-dirs: test
   build-depends:
