@@ -1,0 +1,1 @@
+# box — deprecated\n\nBox is deprecated. Its bones have moved to:\n- `Circuit.Channel` in `circuits` (Producer/Consumer, unit/counit, withQ)\n- `circuits-io` (practical IO combinators: fileIO, socket, server, async)\n\nSee `~/haskell/circuits-io/examples/` for migrated box prototypes.\n\nThe last development branch (`circuits-rewrite`) is preserved for reference.\n
