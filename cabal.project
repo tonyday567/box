@@ -2,10 +2,3 @@ packages:
   box.cabal
 
 write-ghc-environment-files: always
-
-allow-newer:
-  indexed-traversable:base,
-  comonad:base,
-  free:base,
-  free:template-haskell,
-  kan-extensions:free
